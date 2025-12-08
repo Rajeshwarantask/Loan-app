@@ -15,6 +15,7 @@ import {
   CreditCard,
   ClipboardList,
   Settings,
+  Calendar,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { UserRole } from "@/lib/types"
@@ -45,6 +46,7 @@ export function MobileNav({ role, userName }: MobileNavProps) {
     { href: "/dashboard", label: "Dashboard", icon: Home },
     { href: "/admin/users", label: "User Management", icon: Users },
     { href: "/admin/loans", label: "Loan Management", icon: CreditCard },
+    { href: "/admin/monthly-cycles", label: "Monthly Cycles", icon: Calendar },
     { href: "/admin/requests", label: "Loan Requests", icon: ClipboardList },
     { href: "/admin/notices", label: "Manage Notices", icon: Bell },
     { href: "/admin/cash-bill", label: "Cash Bill", icon: FileText },

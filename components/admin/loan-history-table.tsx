@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatCurrency } from "@/lib/utils/loan-calculator"
-import { format } from "date-fns"
+import { format, differenceInMonths } from "date-fns"
 import { ChevronDown, ChevronRight } from "lucide-react"
 
 interface LoanPayment {
@@ -66,6 +66,22 @@ export function LoanHistoryTable({ payments, loans }: LoanHistoryTableProps) {
     return Array.from(groups.values())
   }, [payments, loans])
 
+  const calculateLoanDuration = (loan: Loan, loanPayments: LoanPayment[]) => {
+    const startDate = new Date(loan.requested_at)
+
+    // If loan is completed, use the last payment date as end date
+    if (loan.status === "completed" && loanPayments.length > 0) {
+      const lastPayment = loanPayments[loanPayments.length - 1]
+      const endDate = new Date(lastPayment.payment_date || lastPayment.month_year)
+      const months = differenceInMonths(endDate, startDate)
+      return Math.max(months, 1) // Minimum 1 month
+    }
+
+    // If loan is still active, calculate from start to now
+    const months = differenceInMonths(new Date(), startDate)
+    return Math.max(months, 1) // Minimum 1 month
+  }
+
   if (loanGroups.length === 0) {
     return <div className="text-center py-8 text-muted-foreground">No payment history found</div>
   }
@@ -76,6 +92,7 @@ export function LoanHistoryTable({ payments, loans }: LoanHistoryTableProps) {
         const isExpanded = expandedLoan === loan.id
         const totalPrincipal = loanPayments.reduce((sum, p) => sum + p.principal_paid, 0)
         const totalInterest = loanPayments.reduce((sum, p) => sum + p.interest_paid, 0)
+        const actualDuration = calculateLoanDuration(loan, loanPayments)
 
         return (
           <Card key={loan.id} className="overflow-hidden">
@@ -95,7 +112,7 @@ export function LoanHistoryTable({ payments, loans }: LoanHistoryTableProps) {
                   <div className="text-sm text-muted-foreground flex items-center gap-4">
                     <span>Loan Amount: {formatCurrency(loan.amount)}</span>
                     <span>Rate: {loan.interest_rate}%</span>
-                    <span>Duration: {loan.duration_months} months</span>
+                    <span>Duration: {actualDuration} months</span>
                     <Badge variant={loan.status === "active" ? "default" : "secondary"}>{loan.status}</Badge>
                   </div>
                 </div>

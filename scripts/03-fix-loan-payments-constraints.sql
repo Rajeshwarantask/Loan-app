@@ -12,9 +12,9 @@ DROP CONSTRAINT IF EXISTS loan_payments_loan_id_month_year_key;
 
 -- Create a partial unique constraint that only applies to interest payments
 -- This allows only one interest payment per loan per month
--- But allows multiple principal payments per month (up to 2, enforced by trigger)
-CREATE UNIQUE INDEX loan_payments_interest_unique 
-ON loan_payments (loan_id, payment_month, payment_year) 
+-- But allows multiple principal payments per month
+CREATE UNIQUE INDEX IF NOT EXISTS loan_payments_interest_unique 
+ON loan_payments (loan_id, month_year) 
 WHERE payment_type = 'interest';
 
 -- Create function to enforce payment limits
@@ -22,35 +22,18 @@ CREATE OR REPLACE FUNCTION check_payment_limits()
 RETURNS TRIGGER AS $$
 DECLARE
   interest_count INTEGER;
-  principal_count INTEGER;
 BEGIN
   -- Check interest payments for the month
   IF NEW.payment_type = 'interest' THEN
     SELECT COUNT(*) INTO interest_count
     FROM loan_payments
     WHERE loan_id = NEW.loan_id
-      AND payment_month = NEW.payment_month
-      AND payment_year = NEW.payment_year
+      AND month_year = NEW.month_year
       AND payment_type = 'interest'
       AND id != COALESCE(NEW.id, '00000000-0000-0000-0000-000000000000'::uuid);
     
     IF interest_count > 0 THEN
       RAISE EXCEPTION 'Interest payment already recorded for this month';
-    END IF;
-  END IF;
-
-  -- Check principal payments for the month (max 2 per month)
-  IF NEW.payment_type = 'principal' THEN
-    SELECT COUNT(*) INTO principal_count
-    FROM loan_payments
-    WHERE loan_id = NEW.loan_id
-      AND payment_month = NEW.payment_month
-      AND payment_year = NEW.payment_year
-      AND payment_type = 'principal'
-      AND id != COALESCE(NEW.id, '00000000-0000-0000-0000-000000000000'::uuid);
-    
-    IF principal_count >= 2 THEN
-      RAISE EXCEPTION 'Maximum of 2 principal payments per month allowed';
     END IF;
   END IF;
 

@@ -10,7 +10,7 @@ import { Search, Download } from "lucide-react"
 import { AdminLoansTable } from "./admin-loans-table"
 import { LoanHistoryTable } from "./loan-history-table"
 import { AddLoanDialog } from "./add-loan-dialog"
-import { CompletedLoansTable } from "./completed-loans-table"
+import { UserLoanSummaryTable } from "./user-loan-summary-table"
 
 interface Profile {
   id: string
@@ -76,9 +76,10 @@ export function LoanManagementClient({ loans, payments, users }: LoanManagementC
     return filteredLoans.filter((loan) => loan.status === "active")
   }, [filteredLoans])
 
-  const completedLoans = useMemo(() => {
-    return filteredLoans.filter((loan) => loan.status === "completed")
-  }, [filteredLoans])
+  const allUserLoans = useMemo(() => {
+    if (searchTerm === "" && selectedUser === "all") return loans
+    return filteredLoans
+  }, [filteredLoans, loans, searchTerm, selectedUser])
 
   const filteredPayments = useMemo(() => {
     if (selectedUser === "all") return payments
@@ -104,7 +105,7 @@ export function LoanManagementClient({ loans, payments, users }: LoanManagementC
             Active Loans
           </TabsTrigger>
           <TabsTrigger value="completed-loans" className="text-xs md:text-sm px-2 md:px-3">
-            Completed
+            User Summary
           </TabsTrigger>
           <TabsTrigger value="history" className="text-xs md:text-sm px-2 md:px-3">
             History
@@ -204,13 +205,13 @@ export function LoanManagementClient({ loans, payments, users }: LoanManagementC
 
           <Card>
             <CardHeader>
-              <CardTitle>Completed Loans</CardTitle>
+              <CardTitle>User Loan Summary</CardTitle>
               <CardDescription>
-                Showing {completedLoans.length} completed loan{completedLoans.length !== 1 ? "s" : ""}
+                Consolidated view of all users with total loan amounts and interest paid
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <CompletedLoansTable loans={completedLoans} />
+              <UserLoanSummaryTable loans={allUserLoans} payments={payments} />
             </CardContent>
           </Card>
         </TabsContent>

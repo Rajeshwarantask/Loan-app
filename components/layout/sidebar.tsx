@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Calculator, FileText, Settings, Bell, Users, DollarSign, MessageSquare } from "lucide-react"
+import { Home, Calculator, FileText, Settings, Bell, Users, DollarSign, MessageSquare, Calendar } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { UserRole } from "@/lib/types"
 import { LogoutButton } from "@/components/auth/logout-button"
@@ -28,10 +28,11 @@ export function Sidebar({ role, userName }: SidebarProps) {
     { href: "/dashboard", label: "Dashboard", icon: Home },
     { href: "/admin/users", label: "User Management", icon: Users },
     { href: "/admin/loans", label: "Loan Management", icon: FileText },
+    { href: "/admin/monthly-cycles", label: "Monthly Cycles", icon: Calendar }, // Added Monthly Cycles link for monthly loan cycle management
     { href: "/admin/requests", label: "Loan Requests", icon: DollarSign },
     { href: "/admin/notices", label: "Manage Notices", icon: Bell },
     { href: "/admin/cash-bill", label: "Cash Bill", icon: FileText },
-    { href: "/admin/settings", label: "System Settings", icon: Settings }, // Added settings link
+    { href: "/admin/settings", label: "System Settings", icon: Settings },
     { href: "/calculator", label: "Calculator", icon: Calculator },
   ]
 
