@@ -23,22 +23,36 @@ export default function ResetPasswordPage() {
   const router = useRouter()
 
   useEffect(() => {
-    // Check if user has a valid session (means they clicked the email link)
-    const checkSession = async () => {
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+    const checkToken = async () => {
+      try {
+        const hash = window.location.hash.substring(1)
+        const params = new URLSearchParams(hash)
+        const accessToken = params.get("access_token")
+        const type = params.get("type")
 
-      if (user) {
-        setIsTokenValid(true)
-      } else {
-        setError("Password reset link is invalid or expired. Please request a new one.")
+        if (accessToken && type === "recovery") {
+          const supabase = createClient()
+          const { data, error } = await supabase.auth.verifyOtp({
+            token_hash: hash,
+            type: "recovery",
+          })
+
+          if (error || !data.user) {
+            setError("Password reset link is invalid or expired. Please request a new one.")
+          } else {
+            setIsTokenValid(true)
+          }
+        } else {
+          setError("Password reset link is invalid or expired. Please request a new one.")
+        }
+      } catch (err) {
+        setError("An error occurred while verifying your reset link.")
+      } finally {
+        setIsChecking(false)
       }
-      setIsChecking(false)
     }
 
-    checkSession()
+    checkToken()
   }, [])
 
   const handleResetPassword = async (e: React.FormEvent) => {
