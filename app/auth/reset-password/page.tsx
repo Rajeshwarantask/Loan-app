@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+import { useSearchParams } from "next/navigation"
 
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -21,16 +22,27 @@ export default function ResetPasswordPage() {
   const [isTokenValid, setIsTokenValid] = useState(false)
   const [isChecking, setIsChecking] = useState(true)
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   useEffect(() => {
     const checkToken = async () => {
       try {
+        const code = searchParams.get("code")
         const hash = window.location.hash.substring(1)
         const params = new URLSearchParams(hash)
         const accessToken = params.get("access_token")
         const type = params.get("type")
 
-        if (accessToken && type === "recovery") {
+        if (code) {
+          const supabase = createClient()
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+
+          if (error || !data.session) {
+            setError("Password reset link is invalid or expired. Please request a new one.")
+          } else {
+            setIsTokenValid(true)
+          }
+        } else if (accessToken && type === "recovery") {
           const supabase = createClient()
           const { data, error } = await supabase.auth.verifyOtp({
             token_hash: hash,
@@ -46,6 +58,7 @@ export default function ResetPasswordPage() {
           setError("Password reset link is invalid or expired. Please request a new one.")
         }
       } catch (err) {
+        console.log("[v0] Token verification error:", err)
         setError("An error occurred while verifying your reset link.")
       } finally {
         setIsChecking(false)
@@ -53,7 +66,7 @@ export default function ResetPasswordPage() {
     }
 
     checkToken()
-  }, [])
+  }, [searchParams])
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault()
