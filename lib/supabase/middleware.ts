@@ -29,6 +29,19 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
+  if (user) {
+    const { data: profile } = await supabase.from("profiles").select("id").eq("id", user.id).maybeSingle()
+
+    // If user is authenticated but has no profile, sign them out and redirect to login
+    if (!profile && !request.nextUrl.pathname.startsWith("/auth")) {
+      await supabase.auth.signOut()
+      const url = request.nextUrl.clone()
+      url.pathname = "/auth/login"
+      url.searchParams.set("error", "no_profile")
+      return NextResponse.redirect(url)
+    }
+  }
+
   if (
     !user &&
     !request.nextUrl.pathname.startsWith("/auth") &&

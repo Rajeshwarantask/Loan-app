@@ -45,6 +45,20 @@ export function MonthlyRecordTable({ records, monthYear }: MonthlyRecordTablePro
     return aId.localeCompare(bId)
   })
 
+  const calculateClosingBalance = (record: MonthlyRecord) => {
+    if (record.status === "finalized" && record.closing_outstanding) {
+      return record.closing_outstanding
+    }
+    return record.opening_outstanding + record.new_loan_taken - record.principal_paid
+  }
+
+  const calculateTotalIncome = (record: MonthlyRecord) => {
+    if (record.status === "finalized" && record.total_monthly_income) {
+      return record.total_monthly_income
+    }
+    return record.monthly_subscription + record.interest_paid + record.principal_paid + record.penalty
+  }
+
   return (
     <div className="rounded-md border overflow-x-auto">
       <Table>
@@ -53,6 +67,7 @@ export function MonthlyRecordTable({ records, monthYear }: MonthlyRecordTablePro
             <TableHead className="w-[100px]">Member ID</TableHead>
             <TableHead>Name</TableHead>
             <TableHead className="text-right">Opening</TableHead>
+            <TableHead className="text-right">Interest Due</TableHead>
             <TableHead className="text-right">New Loan</TableHead>
             <TableHead className="text-right">Principal Paid</TableHead>
             <TableHead className="text-right">Interest Paid</TableHead>
@@ -66,7 +81,7 @@ export function MonthlyRecordTable({ records, monthYear }: MonthlyRecordTablePro
         <TableBody>
           {sortedRecords.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={11} className="text-center py-8 text-muted-foreground">
+              <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
                 No records found for this month
               </TableCell>
             </TableRow>
@@ -76,12 +91,21 @@ export function MonthlyRecordTable({ records, monthYear }: MonthlyRecordTablePro
                 <TableCell className="font-medium">{record.profiles.member_id || "N/A"}</TableCell>
                 <TableCell>{record.profiles.full_name}</TableCell>
                 <TableCell className="text-right">{formatCurrency(record.opening_outstanding)}</TableCell>
+                <TableCell className="text-right">
+                  <span
+                    className={record.interest_paid < record.interest_calculated ? "text-orange-600 font-medium" : ""}
+                  >
+                    {formatCurrency(record.interest_calculated)}
+                  </span>
+                </TableCell>
                 <TableCell className="text-right">{formatCurrency(record.new_loan_taken)}</TableCell>
                 <TableCell className="text-right">{formatCurrency(record.principal_paid)}</TableCell>
                 <TableCell className="text-right">{formatCurrency(record.interest_paid)}</TableCell>
                 <TableCell className="text-right">{formatCurrency(record.monthly_subscription)}</TableCell>
-                <TableCell className="text-right font-medium">{formatCurrency(record.total_monthly_income)}</TableCell>
-                <TableCell className="text-right font-medium">{formatCurrency(record.closing_outstanding)}</TableCell>
+                <TableCell className="text-right font-medium">{formatCurrency(calculateTotalIncome(record))}</TableCell>
+                <TableCell className="text-right font-medium">
+                  {formatCurrency(calculateClosingBalance(record))}
+                </TableCell>
                 <TableCell className="text-center">
                   <Badge variant={record.status === "finalized" ? "default" : "secondary"}>
                     {record.status === "finalized" ? "Finalized" : "Draft"}

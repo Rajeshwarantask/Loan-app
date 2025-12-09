@@ -127,12 +127,8 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
           payment_type: "interest",
           principal_paid: 0,
           interest_paid: interest,
-          principal_remaining: newPrincipal,
-          outstanding_interest: updatedOutstandingInterest,
-          remaining_balance: newPrincipal + updatedOutstandingInterest,
+          amount: interest,
           month_year: new Date().toLocaleString("en-US", { month: "short", year: "numeric" }),
-          payment_month: paymentMonth,
-          payment_year: paymentYear,
         })
 
         if (interestError) {
@@ -147,12 +143,8 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
         payment_type: "principal",
         principal_paid: emi,
         interest_paid: 0,
-        principal_remaining: newPrincipal,
-        outstanding_interest: updatedOutstandingInterest,
-        remaining_balance: newPrincipal + updatedOutstandingInterest,
+        amount: emi,
         month_year: new Date().toLocaleString("en-US", { month: "short", year: "numeric" }),
-        payment_month: paymentMonth,
-        payment_year: paymentYear,
       })
 
       if (emiError) {
@@ -167,12 +159,8 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
           payment_type: "principal",
           principal_paid: additionalPrincipal,
           interest_paid: 0,
-          principal_remaining: newPrincipal,
-          outstanding_interest: updatedOutstandingInterest,
-          remaining_balance: newPrincipal + updatedOutstandingInterest,
+          amount: additionalPrincipal,
           month_year: new Date().toLocaleString("en-US", { month: "short", year: "numeric" }),
-          payment_month: paymentMonth,
-          payment_year: paymentYear,
         })
 
         if (principalError) {
@@ -232,40 +220,46 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
         <Button
           variant="outline"
           size="sm"
-          className="h-8 bg-transparent"
+          className="h-6 md:h-8 bg-transparent text-[10px] md:text-sm px-1 md:px-2"
           disabled={isMarked}
           title={isMarked ? "Payment already recorded for this month" : "Record payment"}
         >
-          <Receipt className="h-3.5 w-3.5 mr-1" />
-          Record Payment
+          <Receipt className="h-3 w-3 md:h-3.5 md:w-3.5 md:mr-1" />
+          <span className="hidden md:inline">Record Payment</span>
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-[95vw] md:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Record Monthly Payment</DialogTitle>
-          <DialogDescription>Record payment for {loan.profiles?.full_name}</DialogDescription>
+          <DialogTitle className="text-sm md:text-base">Record Monthly Payment</DialogTitle>
+          <DialogDescription className="text-xs md:text-sm">
+            Record payment for {loan.profiles?.full_name}
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
-          <div className="grid grid-cols-3 gap-3">
-            <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-              <div className="text-xs text-muted-foreground mb-1">Total Outstanding</div>
-              <div className="text-sm font-bold text-blue-600">{formatCurrency(totalLoan)}</div>
+        <div className="space-y-3 md:space-y-4 py-2 md:py-4">
+          <div className="grid grid-cols-3 gap-1.5 md:gap-3">
+            <div className="p-2 md:p-3 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="text-[9px] md:text-xs text-muted-foreground mb-1">Total Outstanding</div>
+              <div className="text-[10px] md:text-sm font-bold text-blue-600">{formatCurrency(totalLoan)}</div>
             </div>
-            <div className="p-3 bg-green-50 rounded-lg border border-green-200">
-              <div className="text-xs text-muted-foreground mb-1">Principal</div>
-              <div className="text-sm font-bold text-green-600">{formatCurrency(principalRemaining)}</div>
+            <div className="p-2 md:p-3 bg-green-50 rounded-lg border border-green-200">
+              <div className="text-[9px] md:text-xs text-muted-foreground mb-1">Principal</div>
+              <div className="text-[10px] md:text-sm font-bold text-green-600">
+                {formatCurrency(principalRemaining)}
+              </div>
             </div>
-            <div className="p-3 bg-orange-50 rounded-lg border border-orange-200">
-              <div className="text-xs text-muted-foreground mb-1">Interest Due</div>
-              <div className="text-sm font-bold text-orange-600">{formatCurrency(outstandingInterest)}</div>
+            <div className="p-2 md:p-3 bg-orange-50 rounded-lg border border-orange-200">
+              <div className="text-[9px] md:text-xs text-muted-foreground mb-1">Interest Due</div>
+              <div className="text-[10px] md:text-sm font-bold text-orange-600">
+                {formatCurrency(outstandingInterest)}
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="emi" className="text-xs font-semibold text-red-600">
+          <div className="grid grid-cols-2 gap-2 md:gap-3">
+            <div className="space-y-1">
+              <Label htmlFor="emi" className="text-[10px] md:text-xs font-semibold text-red-600">
                 Monthly EMI (Mandatory) *
               </Label>
               <Input
@@ -276,14 +270,14 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
                 placeholder="₹5000"
                 value={emiPayment}
                 onChange={(e) => setEmiPayment(e.target.value)}
-                className="h-9 text-sm border-red-300 focus:border-red-500"
+                className="h-7 md:h-9 text-xs md:text-sm border-red-300 focus:border-red-500"
                 required
               />
-              <p className="text-xs text-muted-foreground">Reduces principal directly</p>
+              <p className="text-[9px] md:text-xs text-muted-foreground">Reduces principal directly</p>
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="interest" className="text-xs">
+            <div className="space-y-1">
+              <Label htmlFor="interest" className="text-[10px] md:text-xs">
                 Interest Payment
               </Label>
               <Input
@@ -294,15 +288,17 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
                 placeholder="₹0"
                 value={interestPayment}
                 onChange={(e) => setInterestPayment(e.target.value)}
-                className="h-9 text-sm"
+                className="h-7 md:h-9 text-xs md:text-sm"
               />
-              <p className="text-xs text-muted-foreground">Monthly interest: ₹{calculatedMonthlyInterest}</p>
+              <p className="text-[9px] md:text-xs text-muted-foreground">
+                Monthly interest: ₹{calculatedMonthlyInterest}
+              </p>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="additionalPrincipal" className="text-xs">
+          <div className="grid grid-cols-2 gap-2 md:gap-3">
+            <div className="space-y-1">
+              <Label htmlFor="additionalPrincipal" className="text-[10px] md:text-xs">
                 Additional Principal (Optional)
               </Label>
               <Input
@@ -313,13 +309,13 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
                 placeholder="₹0"
                 value={additionalPrincipalPayment}
                 onChange={(e) => setAdditionalPrincipalPayment(e.target.value)}
-                className="h-9 text-sm"
+                className="h-7 md:h-9 text-xs md:text-sm"
               />
-              <p className="text-xs text-muted-foreground">Extra payment beyond EMI</p>
+              <p className="text-[9px] md:text-xs text-muted-foreground">Extra payment beyond EMI</p>
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="newLoan" className="text-xs">
+            <div className="space-y-1">
+              <Label htmlFor="newLoan" className="text-[10px] md:text-xs">
                 New Loan Taken
               </Label>
               <Input
@@ -330,13 +326,17 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
                 placeholder="₹0"
                 value={newLoanTaken}
                 onChange={(e) => setNewLoanTaken(e.target.value)}
-                className="h-9 text-sm"
+                className="h-7 md:h-9 text-xs md:text-sm"
               />
-              <p className="text-xs text-muted-foreground">Minimum ₹10,000</p>
+              <p className="text-[9px] md:text-xs text-muted-foreground">Minimum ₹10,000</p>
             </div>
           </div>
 
-          {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-600 border border-red-200">{error}</div>}
+          {error && (
+            <div className="rounded-md bg-red-50 p-2 md:p-3 text-[10px] md:text-sm text-red-600 border border-red-200">
+              {error}
+            </div>
+          )}
         </div>
 
         <DialogFooter className="gap-2">
@@ -345,11 +345,16 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
             variant="outline"
             onClick={() => handleSubmit(false)}
             disabled={isLoading}
-            className="flex-1"
+            className="flex-1 h-8 md:h-10 text-xs md:text-sm"
           >
             Not Paid
           </Button>
-          <Button type="button" onClick={() => handleSubmit(true)} disabled={isLoading} className="flex-1">
+          <Button
+            type="button"
+            onClick={() => handleSubmit(true)}
+            disabled={isLoading}
+            className="flex-1 h-8 md:h-10 text-xs md:text-sm"
+          >
             {isLoading ? "Recording..." : "Paid"}
           </Button>
         </DialogFooter>

@@ -87,7 +87,7 @@ export function LoanHistoryTable({ payments, loans }: LoanHistoryTableProps) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2 md:space-y-4">
       {loanGroups.map(({ loan, payments: loanPayments }) => {
         const isExpanded = expandedLoan === loan.id
         const totalPrincipal = loanPayments.reduce((sum, p) => sum + p.principal_paid, 0)
@@ -97,76 +97,84 @@ export function LoanHistoryTable({ payments, loans }: LoanHistoryTableProps) {
         return (
           <Card key={loan.id} className="overflow-hidden">
             <CardHeader
-              className="cursor-pointer hover:bg-muted/50 transition-colors"
+              className="cursor-pointer hover:bg-muted/50 transition-colors px-3 md:px-6 py-3 md:py-6"
               onClick={() => setExpandedLoan(isExpanded ? null : loan.id)}
             >
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                    <CardTitle className="text-base">
+                    <CardTitle className="text-sm md:text-base">
                       {loan.profiles.member_id ? `${loan.profiles.member_id} - ` : ""}
                       {loan.profiles.full_name}
                     </CardTitle>
                   </div>
-                  <div className="text-sm text-muted-foreground flex items-center gap-4">
-                    <span>Loan Amount: {formatCurrency(loan.amount)}</span>
+                  <div className="text-sm text-muted-foreground flex flex-col md:flex-row md:items-center gap-1 md:gap-4">
+                    <span>Loan: {formatCurrency(loan.amount)}</span>
                     <span>Rate: {loan.interest_rate}%</span>
-                    <span>Duration: {actualDuration} months</span>
-                    <Badge variant={loan.status === "active" ? "default" : "secondary"}>{loan.status}</Badge>
+                    <span>Duration: {actualDuration}m</span>
+                    <Badge variant={loan.status === "active" ? "default" : "secondary"} className="w-fit">
+                      {loan.status}
+                    </Badge>
                   </div>
                 </div>
                 <div className="text-right text-sm">
-                  <div className="font-medium">{loanPayments.length} payments</div>
-                  <div className="text-muted-foreground">Total: {formatCurrency(totalPrincipal + totalInterest)}</div>
+                  <div className="font-medium">{loanPayments.length} pays</div>
+                  <div className="text-muted-foreground">{formatCurrency(totalPrincipal + totalInterest)}</div>
                 </div>
               </div>
             </CardHeader>
 
             {isExpanded && (
-              <CardContent className="pt-0">
+              <CardContent className="pt-0 px-2 md:px-6 pb-3 md:pb-6">
                 <div className="rounded-md border overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Month/Year</TableHead>
-                        <TableHead>Principal Paid</TableHead>
-                        <TableHead>Interest Paid</TableHead>
-                        <TableHead>Total Paid</TableHead>
-                        <TableHead>Remaining Balance</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Payment Date</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {loanPayments.map((payment) => (
-                        <TableRow key={payment.id}>
-                          <TableCell className="font-medium">{payment.month_year}</TableCell>
-                          <TableCell>{formatCurrency(payment.principal_paid)}</TableCell>
-                          <TableCell>{formatCurrency(payment.interest_paid)}</TableCell>
-                          <TableCell className="font-semibold">
-                            {formatCurrency(payment.principal_paid + payment.interest_paid)}
-                          </TableCell>
-                          <TableCell>{formatCurrency(payment.remaining_balance)}</TableCell>
-                          <TableCell>
-                            <Badge variant={payment.status === "paid" ? "default" : "secondary"}>
-                              {payment.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            {payment.payment_date ? format(new Date(payment.payment_date), "MMM dd, yyyy") : "N/A"}
-                          </TableCell>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="px-2 md:px-4">Month</TableHead>
+                          <TableHead className="px-2 md:px-4">Principal</TableHead>
+                          <TableHead className="px-2 md:px-4">Interest</TableHead>
+                          <TableHead className="px-2 md:px-4 hidden md:table-cell">Total</TableHead>
+                          <TableHead className="px-2 md:px-4 hidden lg:table-cell">Balance</TableHead>
+                          <TableHead className="px-2 md:px-4 hidden md:table-cell">Status</TableHead>
+                          <TableHead className="px-2 md:px-4 hidden lg:table-cell">Date</TableHead>
                         </TableRow>
-                      ))}
-                      <TableRow className="bg-muted/50 font-medium">
-                        <TableCell>Total</TableCell>
-                        <TableCell>{formatCurrency(totalPrincipal)}</TableCell>
-                        <TableCell>{formatCurrency(totalInterest)}</TableCell>
-                        <TableCell className="font-bold">{formatCurrency(totalPrincipal + totalInterest)}</TableCell>
-                        <TableCell colSpan={3} />
-                      </TableRow>
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {loanPayments.map((payment) => (
+                          <TableRow key={payment.id}>
+                            <TableCell className="font-medium px-2 md:px-4">{payment.month_year}</TableCell>
+                            <TableCell className="px-2 md:px-4">{formatCurrency(payment.principal_paid)}</TableCell>
+                            <TableCell className="px-2 md:px-4">{formatCurrency(payment.interest_paid)}</TableCell>
+                            <TableCell className="font-semibold px-2 md:px-4 hidden md:table-cell">
+                              {formatCurrency(payment.principal_paid + payment.interest_paid)}
+                            </TableCell>
+                            <TableCell className="px-2 md:px-4 hidden lg:table-cell">
+                              {formatCurrency(payment.remaining_balance)}
+                            </TableCell>
+                            <TableCell className="px-2 md:px-4 hidden md:table-cell">
+                              <Badge variant={payment.status === "paid" ? "default" : "secondary"} className="text-sm">
+                                {payment.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="px-2 md:px-4 hidden lg:table-cell">
+                              {payment.payment_date ? format(new Date(payment.payment_date), "MMM dd, yyyy") : "N/A"}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        <TableRow className="bg-muted/50 font-medium">
+                          <TableCell className="px-2 md:px-4">Total</TableCell>
+                          <TableCell className="px-2 md:px-4">{formatCurrency(totalPrincipal)}</TableCell>
+                          <TableCell className="px-2 md:px-4">{formatCurrency(totalInterest)}</TableCell>
+                          <TableCell className="font-bold px-2 md:px-4 hidden md:table-cell">
+                            {formatCurrency(totalPrincipal + totalInterest)}
+                          </TableCell>
+                          <TableCell colSpan={3} />
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
               </CardContent>
             )}

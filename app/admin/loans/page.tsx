@@ -14,7 +14,7 @@ export default async function AdminLoansPage() {
       *,
       profiles!loans_user_id_fkey(id, full_name, email, member_id, phone)
     `)
-    .order("created_at", { ascending: false })
+    .order("profiles(member_id)", { ascending: true })
 
   // Fetch loan payments for history
   const { data: payments } = await supabase

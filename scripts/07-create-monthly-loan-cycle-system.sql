@@ -75,10 +75,13 @@ CREATE POLICY "Users can view own monthly records" ON monthly_loan_records
     )
   );
 
--- Drop existing functions if they exist
+-- Drop all versions of existing functions to prevent "not unique" error
 DROP FUNCTION IF EXISTS initialize_new_month(TEXT, INTEGER, INTEGER);
+DROP FUNCTION IF EXISTS initialize_new_month CASCADE;
 DROP FUNCTION IF EXISTS calculate_monthly_interest(UUID);
+DROP FUNCTION IF EXISTS calculate_monthly_interest CASCADE;
 DROP FUNCTION IF EXISTS finalize_monthly_record(UUID, UUID);
+DROP FUNCTION IF EXISTS finalize_monthly_record CASCADE;
 
 -- Simplified function to initialize a new month for all active members
 CREATE OR REPLACE FUNCTION initialize_new_month(target_month TEXT, target_month_num INTEGER, target_year INTEGER)
@@ -87,7 +90,7 @@ DECLARE
   v_inserted_count INTEGER;
   v_result JSONB;
 BEGIN
-  -- For each active member, create a new monthly record
+  -- For each active member, create a new monthly record with calculated interest
   INSERT INTO monthly_loan_records (
     user_id,
     month_year,
@@ -95,6 +98,7 @@ BEGIN
     year_number,
     opening_outstanding,
     monthly_subscription,
+    interest_calculated,
     status
   )
   SELECT 
@@ -116,6 +120,22 @@ BEGIN
       )
     ) as opening_outstanding,
     COALESCE(p.monthly_subscription, 2100),
+    -- Calculate monthly interest automatically at 1.5% per month
+    ROUND(
+      COALESCE(
+        (SELECT mlr.closing_outstanding 
+         FROM monthly_loan_records mlr 
+         WHERE mlr.user_id = p.id 
+         ORDER BY mlr.year_number DESC, mlr.month_number DESC 
+         LIMIT 1),
+        COALESCE(
+          (SELECT SUM(l.principal_remaining) 
+           FROM loans l 
+           WHERE l.user_id = p.id AND l.status = 'active'),
+          0
+        )
+      ) * 0.015
+    ) as interest_calculated,
     'draft'
   FROM profiles p
   WHERE p.role = 'member'
@@ -227,6 +247,6 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 COMMENT ON TABLE monthly_loan_records IS 'Stores monthly cycle-based loan records for each member';
-COMMENT ON FUNCTION initialize_new_month IS 'Creates draft monthly records for all members for a new month';
+COMMENT ON FUNCTION initialize_new_month IS 'Creates draft monthly records for all members for a new month with calculated interest';
 COMMENT ON FUNCTION calculate_monthly_interest IS 'Calculates monthly interest based on opening outstanding';
 COMMENT ON FUNCTION finalize_monthly_record IS 'Finalizes a monthly record with all calculations';

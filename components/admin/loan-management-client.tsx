@@ -5,8 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Button } from "@/components/ui/button"
-import { Search, Download } from "lucide-react"
+import { Search } from "lucide-react"
 import { AdminLoansTable } from "./admin-loans-table"
 import { LoanHistoryTable } from "./loan-history-table"
 import { AddLoanDialog } from "./add-loan-dialog"
@@ -87,10 +86,10 @@ export function LoanManagementClient({ loans, payments, users }: LoanManagementC
   }, [payments, selectedUser])
 
   return (
-    <div className="container max-w-7xl py-6 px-2 md:px-6 space-y-6">
+    <div className="container max-w-7xl py-2 md:py-6 px-2 md:px-6 space-y-2 md:space-y-6">
       {/* Header */}
-      <div className="space-y-4">
-        <div className="pl-12 md:pl-0 px-2 md:px-0">
+      <div className="space-y-2 md:space-y-4">
+        <div className="pl-12 md:pl-0">
           <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Loan Management</h1>
           <p className="text-sm md:text-base text-muted-foreground">
             Comprehensive loan tracking and payment management
@@ -99,26 +98,20 @@ export function LoanManagementClient({ loans, payments, users }: LoanManagementC
       </div>
 
       {/* Main Content */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-3 md:space-y-4">
-        <TabsList className="w-full grid grid-cols-3 h-9 md:h-10 mx-auto md:w-fit p-0.5">
-          <TabsTrigger value="active-loans" className="text-xs md:text-sm px-2 md:px-3">
-            Active Loans
-          </TabsTrigger>
-          <TabsTrigger value="completed-loans" className="text-xs md:text-sm px-2 md:px-3">
-            User Summary
-          </TabsTrigger>
-          <TabsTrigger value="history" className="text-xs md:text-sm px-2 md:px-3">
-            History
-          </TabsTrigger>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-2 md:space-y-4">
+        <TabsList className="w-full grid grid-cols-3 mx-auto md:w-fit">
+          <TabsTrigger value="active-loans">Active Loans</TabsTrigger>
+          <TabsTrigger value="completed-loans">User Summary</TabsTrigger>
+          <TabsTrigger value="history">History</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="active-loans" className="space-y-4">
+        <TabsContent value="active-loans" className="space-y-2 md:space-y-4">
           <Card>
-            <CardHeader className="pb-3 md:pb-6">
-              <CardTitle className="text-base">Filters</CardTitle>
+            <CardHeader className="pb-3 md:pb-6 px-3 md:px-6 pt-3 md:pt-6">
+              <CardTitle>Filters</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 md:grid-cols-3">
+            <CardContent className="px-3 md:px-6">
+              <div className="grid gap-2 md:gap-4 md:grid-cols-3">
                 <div className="relative">
                   <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -144,37 +137,31 @@ export function LoanManagementClient({ loans, payments, users }: LoanManagementC
                   </SelectContent>
                 </Select>
 
-                <div className="flex gap-2">
-                  <AddLoanDialog users={users} />
-                  <Button variant="outline" size="sm" className="flex-1 bg-transparent">
-                    <Download className="h-4 w-4 mr-2" />
-                    Export
-                  </Button>
-                </div>
+                <AddLoanDialog users={users} />
               </div>
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader>
+            <CardHeader className="px-3 md:px-6 py-3 md:py-6">
               <CardTitle>Active Loans</CardTitle>
               <CardDescription>
                 Showing {activeLoans.length} active loan{activeLoans.length !== 1 ? "s" : ""}
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="px-2 md:px-6">
               <AdminLoansTable loans={activeLoans} />
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="completed-loans" className="space-y-4">
+        <TabsContent value="completed-loans" className="space-y-2 md:space-y-4">
           <Card>
-            <CardHeader className="pb-3 md:pb-6">
-              <CardTitle className="text-base">Filters</CardTitle>
+            <CardHeader className="pb-3 md:pb-6 px-3 md:px-6 pt-3 md:pt-6">
+              <CardTitle>Filters</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 md:grid-cols-2">
+            <CardContent className="px-3 md:px-6">
+              <div className="grid gap-2 md:gap-4 md:grid-cols-2">
                 <div className="relative">
                   <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -204,25 +191,25 @@ export function LoanManagementClient({ loans, payments, users }: LoanManagementC
           </Card>
 
           <Card>
-            <CardHeader>
+            <CardHeader className="px-3 md:px-6 py-3 md:py-6">
               <CardTitle>User Loan Summary</CardTitle>
               <CardDescription>
                 Consolidated view of all users with total loan amounts and interest paid
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="px-2 md:px-6">
               <UserLoanSummaryTable loans={allUserLoans} payments={payments} />
             </CardContent>
           </Card>
         </TabsContent>
 
         {/* Payment History Tab */}
-        <TabsContent value="history" className="space-y-4">
+        <TabsContent value="history" className="space-y-2 md:space-y-4">
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Filter by Member</CardTitle>
+            <CardHeader className="px-3 md:px-6 py-3 md:py-6">
+              <CardTitle>Filter by Member</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="px-3 md:px-6">
               <Select value={selectedUser} onValueChange={setSelectedUser}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select a member" />
@@ -241,7 +228,7 @@ export function LoanManagementClient({ loans, payments, users }: LoanManagementC
           </Card>
 
           <Card>
-            <CardHeader>
+            <CardHeader className="px-3 md:px-6 py-3 md:py-6">
               <CardTitle>Payment History</CardTitle>
               <CardDescription>
                 {selectedUser === "all"
@@ -249,7 +236,7 @@ export function LoanManagementClient({ loans, payments, users }: LoanManagementC
                   : `Payment history for ${users.find((u) => u.id === selectedUser)?.full_name || "selected member"}`}
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="px-2 md:px-6">
               <LoanHistoryTable payments={filteredPayments} loans={loans} />
             </CardContent>
           </Card>

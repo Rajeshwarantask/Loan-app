@@ -19,14 +19,20 @@ export function LoanOverview({ userId, role }: LoanOverviewProps) {
 
   useEffect(() => {
     async function fetchData() {
+      console.log("[v0] LoanOverview - userId:", userId, "role:", role)
       const supabase = createClient()
 
-      const { data: loans } = await supabase.from("loans").select("amount, status").eq("user_id", userId)
+      const { data: loans, error: loansError } = await supabase
+        .from("loans")
+        .select("amount, status")
+        .eq("user_id", userId)
+      console.log("[v0] LoanOverview - loans data:", loans, "error:", loansError)
 
-      const { data: payments } = await supabase
+      const { data: payments, error: paymentsError } = await supabase
         .from("loan_payments")
         .select("interest_paid, principal_paid, remaining_balance, status")
         .eq("user_id", userId)
+      console.log("[v0] LoanOverview - payments data:", payments, "error:", paymentsError)
 
       const totalLoanTaken = loans?.reduce((sum, loan) => sum + Number(loan.amount), 0) || 0
 
@@ -34,6 +40,8 @@ export function LoanOverview({ userId, role }: LoanOverviewProps) {
 
       const pendingBalance =
         loans?.filter((loan) => loan.status === "active").reduce((sum, loan) => sum + Number(loan.amount), 0) || 0
+
+      console.log("[v0] LoanOverview - calculated stats:", { totalLoanTaken, totalInterestPaid, pendingBalance })
 
       setStats({ totalLoanTaken, totalInterestPaid, pendingBalance })
 
@@ -43,6 +51,7 @@ export function LoanOverview({ userId, role }: LoanOverviewProps) {
         { name: "Pending", value: pendingBalance, color: "#f97316" }, // Orange
       ].filter((item) => item.value > 0)
 
+      console.log("[v0] LoanOverview - chart data:", data)
       setChartData(data)
       setIsLoading(false)
     }

@@ -70,14 +70,20 @@ export function InitializeMonthDialog({ members }: InitializeMonthDialogProps) {
     try {
       const supabase = createClient()
 
-      const monthName = months.find((m) => m.value === selectedMonth)?.label
-      const monthYear = `${monthName?.substring(0, 3)} ${selectedYear}`
+      const monthYear = `${selectedYear}-${selectedMonth.padStart(2, "0")}`
 
-      // Call the database function to initialize the month
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!user) {
+        throw new Error("User not authenticated")
+      }
+
+      // Call the database function with updated parameters
       const { data, error: rpcError } = await supabase.rpc("initialize_new_month", {
-        target_month: monthYear,
-        target_month_num: Number.parseInt(selectedMonth),
-        target_year: Number.parseInt(selectedYear),
+        p_month_year: monthYear,
+        p_created_by: user.id,
       })
 
       if (rpcError) {
@@ -87,14 +93,15 @@ export function InitializeMonthDialog({ members }: InitializeMonthDialogProps) {
       if (data) {
         const result = typeof data === "string" ? JSON.parse(data) : data
 
-        if (result.success && result.inserted_count > 0) {
+        if (result.success && result.records_created > 0) {
+          const monthName = months.find((m) => m.value === selectedMonth)?.label
           toast({
             title: "Month Initialized",
-            description: `Successfully created ${result.inserted_count} monthly records for ${monthYear}`,
+            description: `Successfully created ${result.records_created} monthly records for ${monthName} ${selectedYear}`,
           })
           setOpen(false)
           router.refresh()
-        } else if (result.inserted_count === 0) {
+        } else if (result.records_created === 0) {
           setError("No member records were created. Please ensure members exist with role='member'.")
         }
       }

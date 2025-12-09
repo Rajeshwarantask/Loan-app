@@ -11,11 +11,11 @@ function cleanNameAndVoucher(user: AnyObj) {
   const explicitMatch = explicit.match(/\bV[-]?\d{1,6}\b/i)
   if (explicitMatch) {
     const voucher = explicitMatch[0].toUpperCase()
-    const cleanedName = rawName.replace(new RegExp(`(?:[\\s,\\-\\(\\)]*)${voucher}$`, "i"), "").trim()
+    const cleanedName = rawName.replace(new RegExp(`(?:[\\s,\\-\$$\$$]*)${voucher}$`, "i"), "").trim()
     return { name: cleanedName || rawName, voucher }
   }
 
-  const trailingRegex = /^(.*?)[\s,\-]*(?:[\(#]?)(V[-]?\s*\d{1,6})(?:[\)]?)\s*$/i
+  const trailingRegex = /^(.*?)[\s,-]*(?:[$$#]?)(V[-]?\s*\d{1,6})(?:[$$]?)\s*$/i
   const m = rawName.match(trailingRegex)
   if (m) {
     const namePart = (m[1] || "").trim()
@@ -32,17 +32,59 @@ export async function POST(request: NextRequest) {
     const { selectedUser } = await request.json()
 
     const supabase = await createClient()
-    let query = supabase.from("member_cash_bill_data").select("*")
-    if (selectedUser) query = query.eq("user_id", selectedUser)
 
-    const { data: users, error } = await query
-    if (error) {
-      console.error("[v0] Error fetching cash bill data:", error)
-      return NextResponse.json({ error: "Failed to fetch cash bill data", details: error.message }, { status: 500 })
+    // Build cash bill data from profiles, loans, and monthly_loan_records
+    let profilesQuery = supabase
+      .from("profiles")
+      .select("id, full_name, member_id, monthly_subscription")
+      .not("member_id", "is", null)
+      .order("member_id")
+
+    if (selectedUser) {
+      profilesQuery = profilesQuery.eq("id", selectedUser)
     }
-    if (!users || users.length === 0) {
+
+    const { data: profiles, error: profilesError } = await profilesQuery
+    if (profilesError) {
+      console.error("[v0] Error fetching profiles:", profilesError)
+      return NextResponse.json(
+        { error: "Failed to fetch cash bill data", details: profilesError.message },
+        { status: 500 },
+      )
+    }
+    if (!profiles || profiles.length === 0) {
       return NextResponse.json({ error: "No users found" }, { status: 404 })
     }
+
+    // Fetch active loans for all users
+    const { data: loans } = await supabase
+      .from("loans")
+      .select("user_id, principal_remaining, outstanding_interest, monthly_emi_amount")
+      .eq("status", "active")
+
+    // Build user data with loan information
+    const users = profiles.map((profile) => {
+      const userLoans = loans?.filter((l) => l.user_id === profile.id) || []
+      const totalLoanBalance = userLoans.reduce((sum, loan) => sum + (loan.principal_remaining || 0), 0)
+      const totalInterest = userLoans.reduce((sum, loan) => sum + (loan.outstanding_interest || 0), 0)
+      const monthlyEmi = userLoans.reduce((sum, loan) => sum + (loan.monthly_emi_amount || 0), 0)
+
+      return {
+        user_id: profile.id,
+        full_name: profile.full_name,
+        member_id: profile.member_id,
+        name: profile.full_name,
+        voucher_no: profile.member_id,
+        monthly_installment: profile.monthly_subscription || 2100,
+        total_loan_balance: totalLoanBalance,
+        monthly_emi: monthlyEmi,
+        fine: 0, // Can be fetched from profiles.fine if needed
+        // Additional calculated fields for compatibility
+        monthly_installment_amount: profile.monthly_subscription || 2100,
+        loan_balance: totalLoanBalance,
+        total_loan: totalLoanBalance,
+      }
+    })
 
     const wb = new ExcelJS.Workbook()
     wb.creator = "Financial Community App"
@@ -55,12 +97,12 @@ export async function POST(request: NextRequest) {
 
     // Do NOT hide column 1 or row 1 — content will start at A1 now.
     // Assign widths for columns A..F so the old B..G widths are moved to A..F
-    ws.getColumn(1).width = 22     // A (was B)
-    ws.getColumn(2).width = 17.67  // B (was C)
-    ws.getColumn(3).width = 5      // C (was D spacer)
-    ws.getColumn(4).width = 22     // D (was E)
-    ws.getColumn(5).width = 17.67  // E (was F)
-    ws.getColumn(6).width = 5      // F (was G safety)
+    ws.getColumn(1).width = 22 // A (was B)
+    ws.getColumn(2).width = 17.67 // B (was C)
+    ws.getColumn(3).width = 5 // C (was D spacer)
+    ws.getColumn(4).width = 22 // D (was E)
+    ws.getColumn(5).width = 17.67 // E (was F)
+    ws.getColumn(6).width = 5 // F (was G safety)
 
     const blueARGB = "FF0B2E6F"
     const thinSide = { style: "thin", color: { argb: "FF000000" } }
@@ -110,7 +152,9 @@ export async function POST(request: NextRequest) {
       else voucher = user.member_id != null ? String(user.member_id).trim() : ""
 
       // Map DB fields (fallbacks)
-      const monthlyInstallment = safeNum(user.monthly_installment ?? user.monthly_emi ?? user.monthly_installment_amount)
+      const monthlyInstallment = safeNum(
+        user.monthly_installment ?? user.monthly_emi ?? user.monthly_installment_amount,
+      )
       const totalLoan = safeNum(user.total_loan_balance ?? user.loan_balance ?? user.total_loan)
       const monthlyEmi = safeNum(user.monthly_emi ?? user.monthly_installment)
       const fine = safeNum(user.fine)
@@ -127,8 +171,8 @@ export async function POST(request: NextRequest) {
       ws.getRow(titleRow).height = 24
       ws.getRow(dateRow).height = 16
       ws.getRow(nameRow).height = 18
-      ws.getRow(hdrRow).height = 20
-      for (let r = firstData; r <= totalRowIndex; r++) ws.getRow(r).height = 20
+      ws.getRow(hdrRow).height = 26
+      for (let r = firstData; r <= totalRowIndex; r++) ws.getRow(r).height = 26
 
       // Title (merged across leftCol and leftCol+1)
       ws.mergeCells(titleRow, leftCol, titleRow, leftCol + 1)
@@ -226,7 +270,7 @@ export async function POST(request: NextRequest) {
     const startRow = 1
     const leftCol = 1 // A
     const rightCol = 4 // D
-    const verticalGap = 2
+    const verticalGap = 1
 
     let cursor = startRow
     for (let i = 0; i < users.length; i += 2) {
@@ -234,9 +278,14 @@ export async function POST(request: NextRequest) {
       if (i + 1 < users.length) {
         const rightUsed = placeBillAt(users[i + 1], cursor, rightCol)
         const used = Math.max(leftUsed, rightUsed)
-        cursor += used + verticalGap
+        const billNumber = Math.floor(i / 2) + 1 // Which row of bills (1, 2, 3, ...)
+        const shouldAddGap = billNumber % 3 !== 0 // Add gap unless it's every 3rd row
+        cursor += used + (shouldAddGap ? verticalGap : 0)
       } else {
-        cursor += leftUsed + verticalGap
+        // Last bill (odd number of users)
+        const billNumber = Math.floor(i / 2) + 1
+        const shouldAddGap = billNumber % 3 !== 0
+        cursor += leftUsed + (shouldAddGap ? verticalGap : 0)
       }
     }
 

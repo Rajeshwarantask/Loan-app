@@ -72,13 +72,27 @@ export function MonthlyCycleClient({ monthlyRecords, members }: MonthlyCycleClie
   const monthStats = useMemo(() => {
     if (!currentMonthRecords.length) return null
 
+    const calculateClosingBalance = (r: MonthlyRecord) => {
+      if (r.status === "finalized" && r.closing_outstanding) {
+        return r.closing_outstanding
+      }
+      return r.opening_outstanding + (r.new_loan_taken || 0) - (r.principal_paid || 0)
+    }
+
+    const calculateTotalIncome = (r: MonthlyRecord) => {
+      if (r.status === "finalized" && r.total_monthly_income) {
+        return r.total_monthly_income
+      }
+      return (r.monthly_subscription || 0) + (r.interest_paid || 0) + (r.principal_paid || 0) + (r.penalty || 0)
+    }
+
     const totalSubscription = currentMonthRecords.reduce((sum, r) => sum + (r.monthly_subscription || 0), 0)
     const totalInterest = currentMonthRecords.reduce((sum, r) => sum + (r.interest_paid || 0), 0)
     const totalPrincipal = currentMonthRecords.reduce((sum, r) => sum + (r.principal_paid || 0), 0)
     const totalNewLoans = currentMonthRecords.reduce((sum, r) => sum + (r.new_loan_taken || 0), 0)
     const totalPenalty = currentMonthRecords.reduce((sum, r) => sum + (r.penalty || 0), 0)
-    const totalIncome = currentMonthRecords.reduce((sum, r) => sum + (r.total_monthly_income || 0), 0)
-    const totalOutstanding = currentMonthRecords.reduce((sum, r) => sum + (r.closing_outstanding || 0), 0)
+    const totalIncome = currentMonthRecords.reduce((sum, r) => sum + calculateTotalIncome(r), 0)
+    const totalOutstanding = currentMonthRecords.reduce((sum, r) => sum + calculateClosingBalance(r), 0)
 
     const draftCount = currentMonthRecords.filter((r) => r.status === "draft").length
     const finalizedCount = currentMonthRecords.filter((r) => r.status === "finalized").length

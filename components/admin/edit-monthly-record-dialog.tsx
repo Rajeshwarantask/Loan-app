@@ -67,11 +67,21 @@ export function EditMonthlyRecordDialog({ record }: EditMonthlyRecordDialogProps
         throw new Error("You must be logged in")
       }
 
+      const interestPaidNum = Number.parseFloat(interestPaid)
+      const principalPaidNum = Number.parseFloat(principalPaid)
+      const newLoanTakenNum = Number.parseFloat(newLoanTaken)
+      const penaltyNum = Number.parseFloat(penalty)
+
+      const closingOutstanding = record.opening_outstanding + newLoanTakenNum - principalPaidNum
+      const totalMonthlyIncome = record.monthly_subscription + interestPaidNum + principalPaidNum + penaltyNum
+
       const updateData = {
-        interest_paid: Number.parseFloat(interestPaid),
-        principal_paid: Number.parseFloat(principalPaid),
-        new_loan_taken: Number.parseFloat(newLoanTaken),
-        penalty: Number.parseFloat(penalty),
+        interest_paid: interestPaidNum,
+        principal_paid: principalPaidNum,
+        new_loan_taken: newLoanTakenNum,
+        penalty: penaltyNum,
+        closing_outstanding: closingOutstanding,
+        total_monthly_income: totalMonthlyIncome,
         notes,
         updated_at: new Date().toISOString(),
       }

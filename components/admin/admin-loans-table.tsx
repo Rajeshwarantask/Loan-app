@@ -23,6 +23,7 @@ interface Loan {
   profiles: {
     full_name: string
     email: string
+    member_id: string | null
   }
   user_id: string
   loan_balance?: number
@@ -85,17 +86,18 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
   }, [loans])
 
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto -mx-2 md:mx-0">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>User</TableHead>
-            <TableHead>Principal Balance</TableHead>
-            <TableHead>Interest Rate</TableHead>
-            <TableHead>Record Status</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Date</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
+            <TableHead className="px-2 md:px-4">ID</TableHead>
+            <TableHead className="px-2 md:px-4">User</TableHead>
+            <TableHead className="px-2 md:px-4">Principal</TableHead>
+            <TableHead className="px-2 md:px-4 hidden md:table-cell">Rate</TableHead>
+            <TableHead className="px-2 md:px-4">Status</TableHead>
+            <TableHead className="px-2 md:px-4 hidden md:table-cell">Record</TableHead>
+            <TableHead className="px-2 md:px-4 hidden lg:table-cell">Date</TableHead>
+            <TableHead className="text-right px-2 md:px-4">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -105,21 +107,13 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
 
             return (
               <TableRow key={loan.id}>
-                <TableCell>
+                <TableCell className="font-medium px-2 md:px-4">{loan.profiles.member_id || "N/A"}</TableCell>
+                <TableCell className="px-2 md:px-4">
                   <div className="font-medium">{loan.profiles.full_name}</div>
                 </TableCell>
-                <TableCell className="font-semibold">{formatCurrency(principalRemaining)}</TableCell>
-                <TableCell>{loan.interest_rate}%</TableCell>
-                <TableCell>
-                  {recordStatus?.marked ? (
-                    <Badge variant="default" className="bg-green-600">
-                      Marked — {recordStatus.monthYear}
-                    </Badge>
-                  ) : (
-                    <Badge variant="secondary">Not marked</Badge>
-                  )}
-                </TableCell>
-                <TableCell>
+                <TableCell className="font-semibold px-2 md:px-4">{formatCurrency(principalRemaining)}</TableCell>
+                <TableCell className="px-2 md:px-4 hidden md:table-cell">{loan.interest_rate}%</TableCell>
+                <TableCell className="px-2 md:px-4">
                   <Badge
                     variant={
                       loan.status === "active"
@@ -128,13 +122,27 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
                           ? "secondary"
                           : "destructive"
                     }
+                    className="px-2"
                   >
                     {loan.status}
                   </Badge>
                 </TableCell>
-                <TableCell>{format(new Date(loan.requested_at), "MMM dd, yyyy")}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex items-center justify-end gap-2">
+                <TableCell className="px-2 md:px-4 hidden md:table-cell">
+                  {recordStatus?.marked ? (
+                    <Badge variant="default" className="bg-green-600 px-2">
+                      Marked — {recordStatus.monthYear}
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary" className="px-2">
+                      Not marked
+                    </Badge>
+                  )}
+                </TableCell>
+                <TableCell className="px-2 md:px-4 hidden lg:table-cell">
+                  {format(new Date(loan.requested_at), "MMM dd, yyyy")}
+                </TableCell>
+                <TableCell className="text-right px-2 md:px-4">
+                  <div className="flex flex-col md:flex-row items-end md:items-center justify-end gap-1 md:gap-2">
                     <Dialog
                       open={loanDetailsOpen && selectedLoan?.id === loan.id}
                       onOpenChange={(open) => {
@@ -143,21 +151,21 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
                       }}
                     >
                       <DialogTrigger asChild>
-                        <Button variant="ghost" size="sm" onClick={() => setSelectedLoan(loan)} className="h-8">
-                          <Eye className="h-3.5 w-3.5 mr-1" />
-                          View
+                        <Button variant="ghost" size="sm" onClick={() => setSelectedLoan(loan)}>
+                          <Eye className="h-4 w-4 mr-0 md:mr-1" />
+                          <span className="hidden md:inline">View</span>
                         </Button>
                       </DialogTrigger>
-                      <DialogContent className="max-w-md">
+                      <DialogContent className="max-w-[95vw] md:max-w-md">
                         <DialogHeader>
-                          <DialogTitle>Loan Details</DialogTitle>
+                          <DialogTitle className="text-sm md:text-base">Loan Details</DialogTitle>
                         </DialogHeader>
                         {selectedLoan && (
-                          <div className="space-y-4 py-4">
-                            <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-3 md:space-y-4 py-2 md:py-4">
+                            <div className="grid grid-cols-2 gap-2 md:gap-4">
                               <div>
                                 <div className="text-sm font-medium text-muted-foreground">Borrower</div>
-                                <div className="text-base font-semibold">{selectedLoan.profiles.full_name}</div>
+                                <div className="font-semibold">{selectedLoan.profiles.full_name}</div>
                               </div>
                               <div>
                                 <div className="text-sm font-medium text-muted-foreground">Email</div>
@@ -179,7 +187,7 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
                               </div>
                               <div>
                                 <div className="text-sm font-medium text-muted-foreground">Monthly Interest</div>
-                                <div className="text-base font-semibold">
+                                <div className="font-semibold">
                                   {formatCurrency(
                                     Math.round(
                                       ((selectedLoan.principal_remaining ?? selectedLoan.amount) *
@@ -193,20 +201,20 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
                                 <>
                                   <div>
                                     <div className="text-sm font-medium text-muted-foreground">Monthly EMI</div>
-                                    <div className="text-base font-semibold">
+                                    <div className="font-semibold">
                                       {formatCurrency(Number(selectedLoan.monthly_emi_amount))}
                                     </div>
                                   </div>
                                   <div>
                                     <div className="text-sm font-medium text-muted-foreground">EMI Interest</div>
-                                    <div className="text-base font-semibold">
+                                    <div className="font-semibold">
                                       {formatCurrency(Number(selectedLoan.emi_monthly_interest || 0))}
                                     </div>
                                   </div>
                                 </>
                               ) : (
                                 <div className="col-span-2">
-                                  <Badge variant="outline" className="text-muted-foreground">
+                                  <Badge variant="outline" className="text-muted-foreground text-sm">
                                     EMI details not configured yet
                                   </Badge>
                                 </div>
@@ -221,6 +229,7 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
                                         ? "secondary"
                                         : "destructive"
                                   }
+                                  className="text-xs"
                                 >
                                   {selectedLoan.status}
                                 </Badge>
