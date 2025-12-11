@@ -56,7 +56,7 @@ BEGIN
       period_month,
       period_key,
       total_loan_taken,
-      previous_month_principal_received,
+      additional_principal, -- renamed from previous_month_principal_received
       monthly_interest_income,
       new_loan_taken,
       total_loan_outstanding,
@@ -84,13 +84,13 @@ BEGIN
         FROM loans 
         WHERE user_id = v_user_record.user_id
       ), 0),
-      -- previous_month_principal_received: from previous month's additional principal payments
+      -- additional_principal: from current month's additional principal payments -- updated calculation to use current month instead of previous
       COALESCE((
         SELECT SUM(additional_principal) 
         FROM loan_payments 
         WHERE user_id = v_user_record.user_id
-          AND period_year = CASE WHEN v_period_month = 1 THEN v_period_year - 1 ELSE v_period_year END
-          AND period_month = CASE WHEN v_period_month = 1 THEN 12 ELSE v_period_month - 1 END
+          AND period_year = v_period_year -- changed from previous month to current month
+          AND period_month = v_period_month -- changed from previous month to current month
       ), 0),
       -- monthly_interest_income: from current month's payments
       COALESCE((
@@ -123,11 +123,21 @@ BEGIN
           AND period_year = v_period_year
           AND period_month = v_period_month
       ), 0),
-      -- monthly_subscription: default 0, can be updated later
-      0,
-      -- total_income_current_month: interest + EMI
+      -- monthly_subscription: sum from active loans instead of hardcoded 0
       COALESCE((
-        SELECT SUM(interest_paid) + SUM(monthly_emi)
+        SELECT SUM(monthly_subscription) 
+        FROM loans 
+        WHERE user_id = v_user_record.user_id
+          AND status = 'active'
+      ), 0),
+      -- total_income_current_month: subscription + interest + additional_principal + penalty
+      COALESCE((
+        SELECT SUM(monthly_subscription) 
+        FROM loans 
+        WHERE user_id = v_user_record.user_id
+          AND status = 'active'
+      ), 0) + COALESCE((
+        SELECT SUM(interest_paid) + SUM(additional_principal) + COALESCE(SUM(penalty), 0)
         FROM loan_payments 
         WHERE user_id = v_user_record.user_id
           AND period_year = v_period_year
@@ -142,13 +152,18 @@ BEGIN
           AND period_month = CASE WHEN v_period_month = 1 THEN 12 ELSE v_period_month - 1 END
       ), 0),
       -- difference: current month income - previous month income
-      COALESCE((
-        SELECT SUM(interest_paid) + SUM(monthly_emi)
+      (COALESCE((
+        SELECT SUM(monthly_subscription) 
+        FROM loans 
+        WHERE user_id = v_user_record.user_id
+          AND status = 'active'
+      ), 0) + COALESCE((
+        SELECT SUM(interest_paid) + SUM(additional_principal) + COALESCE(SUM(penalty), 0)
         FROM loan_payments 
         WHERE user_id = v_user_record.user_id
           AND period_year = v_period_year
           AND period_month = v_period_month
-      ), 0) - COALESCE((
+      ), 0)) - COALESCE((
         SELECT total_income_current_month
         FROM monthly_loan_records
         WHERE user_id = v_user_record.user_id

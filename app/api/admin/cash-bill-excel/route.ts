@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     // Fetch profiles separately
     const { data: profiles, error: profilesError } = await supabase
       .from("profiles")
-      .select("id, member_id, full_name, monthly_subscription")
+      .select("id, member_id, full_name")
       .in("id", userIds)
 
     if (profilesError) {
@@ -86,15 +86,15 @@ export async function POST(request: NextRequest) {
           member_id: profile?.member_id || "",
           name: profile?.full_name || "",
           voucher_no: profile?.member_id || "",
-          monthly_installment: record.monthly_subscription || profile?.monthly_subscription || 2100,
-          total_loan_balance: record.closing_outstanding || 0,
+          monthly_installment: record.monthly_subscription || 2100,
+          total_loan_balance: record.total_loan_outstanding || 0,
           monthly_emi: record.additional_principal || 0,
           fine: record.penalty || 0,
           // Additional fields for compatibility
-          monthly_installment_amount: record.monthly_subscription || profile?.monthly_subscription || 2100,
-          loan_balance: record.closing_outstanding || 0,
-          total_loan: record.closing_outstanding || 0,
-          available_loan: record.available_loan_amount || 400000 - (record.closing_outstanding || 0),
+          monthly_installment_amount: record.monthly_subscription || 2100,
+          loan_balance: record.total_loan_outstanding || 0,
+          total_loan: record.total_loan_outstanding || 0,
+          available_loan: record.available_loan_amount || 400000 - (record.total_loan_outstanding || 0),
         }
       })
       .sort((a, b) => {
