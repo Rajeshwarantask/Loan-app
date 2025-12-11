@@ -11,10 +11,10 @@ import { Eye } from "lucide-react"
 
 interface Loan {
   id: string
-  amount: number
+  loan_amount: number
   interest_rate: number
   status: string
-  requested_at: string
+  created_at: string
   profiles: {
     full_name: string
     email: string
@@ -53,13 +53,13 @@ export function CompletedLoansTable({ loans }: CompletedLoansTableProps) {
                   <div className="font-medium">{loan.profiles.full_name}</div>
                   <div className="text-sm text-muted-foreground">{loan.profiles.email}</div>
                 </TableCell>
-                <TableCell className="font-semibold">{formatCurrency(Number(loan.amount))}</TableCell>
+                <TableCell className="font-semibold">{formatCurrency(Number(loan.loan_amount))}</TableCell>
                 <TableCell>
                   <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
                     Completed
                   </Badge>
                 </TableCell>
-                <TableCell className="text-sm">{format(new Date(loan.requested_at), "MMM dd, yyyy")}</TableCell>
+                <TableCell className="text-sm">{format(new Date(loan.created_at), "MMM dd, yyyy")}</TableCell>
                 <TableCell className="text-right">
                   <Dialog
                     open={loanDetailsOpen && selectedLoan?.id === loan.id}
@@ -91,7 +91,9 @@ export function CompletedLoansTable({ loans }: CompletedLoansTableProps) {
                             </div>
                             <div>
                               <div className="text-sm font-medium text-muted-foreground">Original Amount</div>
-                              <div className="text-lg font-bold">{formatCurrency(Number(selectedLoan.amount))}</div>
+                              <div className="text-lg font-bold">
+                                {formatCurrency(Number(selectedLoan.loan_amount))}
+                              </div>
                             </div>
                             <div>
                               <div className="text-sm font-medium text-muted-foreground">Interest Rate</div>
@@ -105,9 +107,7 @@ export function CompletedLoansTable({ loans }: CompletedLoansTableProps) {
                             </div>
                             <div>
                               <div className="text-sm font-medium text-muted-foreground">Created Date</div>
-                              <div className="text-sm">
-                                {format(new Date(selectedLoan.requested_at), "MMM dd, yyyy")}
-                              </div>
+                              <div className="text-sm">{format(new Date(selectedLoan.created_at), "MMM dd, yyyy")}</div>
                             </div>
                           </div>
                         </div>

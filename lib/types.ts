@@ -17,36 +17,47 @@ export interface Profile {
 export interface Loan {
   id: string
   user_id: string
-  amount: number
+  member_id?: string
+  loan_amount: number // Changed from amount
   interest_rate: number
   duration_months: number
   purpose: string | null
   status: "pending" | "approved" | "rejected" | "active" | "completed"
-  loan_balance: number
-  installment_loan_taken: number
-  installment_duration_months: number
-  monthly_emi_amount: number
-  emi_balance: number
-  emi_monthly_interest: number
+  remaining_balance: number // Changed from principal_remaining
+  additional_principal: number
+  interest_paid: number
+  principal_paid: number
+  monthly_emi: number // Changed from monthly_emi_amount
+  payment_date: string | null
   requested_at: string
   approved_at: string | null
   approved_by: string | null
   created_at: string
   updated_at: string
+  period_year: number
+  period_month: number
+  period_key: string
 }
 
 export interface LoanPayment {
   id: string
   loan_id: string
   user_id: string
+  member_id?: string
   month_year: string
   principal_paid: number
   interest_paid: number
+  additional_principal: number
+  monthly_emi: number
   remaining_balance: number
-  status: "paid" | "unpaid" | "missed" | "partial"
+  amount: number
+  status: "paid" | "unpaid" | "missed" | "partial" | "completed"
   payment_date: string | null
   created_at: string
   updated_at: string
+  period_year: number
+  period_month: number
+  period_key: string
 }
 
 export interface MonthlyContribution {

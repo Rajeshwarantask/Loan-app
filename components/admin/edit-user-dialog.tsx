@@ -39,7 +39,6 @@ export function EditUserDialog({ user, open, onClose }: EditUserDialogProps) {
     const fullName = formData.get("fullName") as string
     const phone = formData.get("phone") as string
     const role = formData.get("role") as string
-    const monthlyContribution = formData.get("monthlyContribution") as string
 
     try {
       const supabase = createClient()
@@ -50,7 +49,6 @@ export function EditUserDialog({ user, open, onClose }: EditUserDialogProps) {
           full_name: fullName,
           phone: phone || null,
           role: role,
-          monthly_contribution: Number.parseFloat(monthlyContribution),
           whatsapp_link: phone ? `https://wa.me/${phone.replace(/\D/g, "")}` : null,
           updated_at: new Date().toISOString(),
         })
@@ -95,17 +93,6 @@ export function EditUserDialog({ user, open, onClose }: EditUserDialogProps) {
                   <SelectItem value="admin">Admin</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="monthlyContribution">Monthly Contribution (₹)</Label>
-              <Input
-                id="monthlyContribution"
-                name="monthlyContribution"
-                type="number"
-                defaultValue={user.monthly_contribution}
-                step="100"
-                min="0"
-              />
             </div>
             {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-600">{error}</div>}
           </div>

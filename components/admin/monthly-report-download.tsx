@@ -23,7 +23,7 @@ export function MonthlyReportDownload() {
       // Fetch all loans
       const { data: loans } = await supabase
         .from("loans")
-        .select("*, profiles!loans_user_id_fkey(full_name, email)")
+        .select("*, profiles!loans_user_id_fkey(full_name, email, member_id)") // Restored correct foreign key to loans_user_id_fkey
         .order("created_at", { ascending: false })
 
       // Fetch all payments for the current month

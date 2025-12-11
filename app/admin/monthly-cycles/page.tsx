@@ -21,34 +21,29 @@ export default async function MonthlyCyclesPage() {
     redirect("/")
   }
 
-  // Fetch monthly records
   const { data: monthlyRecords } = await supabase
     .from("monthly_loan_records")
-    .select(`
-      *,
-      profiles:user_id (
-        id,
-        full_name,
-        email,
-        member_id
-      )
-    `)
-    .order("year_number", { ascending: false })
-    .order("month_number", { ascending: false })
+    .select("*")
+    .order("period_year", { ascending: false })
+    .order("period_month", { ascending: false })
 
-  // Fetch all members
-  const { data: members } = await supabase
-    .from("profiles")
-    .select("id, full_name, email, member_id, monthly_subscription")
-    .eq("role", "member")
-    .order("member_id")
+  const { data: profiles } = await supabase.from("profiles").select("id, full_name, email, member_id")
+
+  // Join profiles data with monthly records
+  const recordsWithProfiles =
+    monthlyRecords?.map((record) => ({
+      ...record,
+      profiles: profiles?.find((p) => p.id === record.user_id),
+    })) || []
+
+  const { data: members } = await supabase.from("profiles").select("id, full_name, email, member_id").order("member_id")
 
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar role={profile.role} userName={profile.full_name} />
 
       <main className="flex-1 overflow-y-auto pb-20 md:pb-0">
-        <MonthlyCycleClient monthlyRecords={monthlyRecords || []} members={members || []} />
+        <MonthlyCycleClient monthlyRecords={recordsWithProfiles || []} members={members || []} />
       </main>
 
       <MobileNav role={profile.role} />

@@ -4,7 +4,7 @@ import { Sidebar } from "@/components/layout/sidebar"
 import { MobileNav } from "@/components/layout/mobile-nav"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { formatCurrency, getMonthYearLabel } from "@/lib/utils/loan-calculator"
+import { formatCurrency } from "@/lib/utils/loan-calculator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { format } from "date-fns"
 
@@ -68,7 +68,7 @@ export default async function LoansPage() {
                     <TableBody>
                       {loans.map((loan) => (
                         <TableRow key={loan.id}>
-                          <TableCell className="font-semibold">{formatCurrency(Number(loan.amount))}</TableCell>
+                          <TableCell className="font-semibold">{formatCurrency(Number(loan.loan_amount))}</TableCell>
                           <TableCell>{loan.interest_rate}%</TableCell>
                           <TableCell>
                             <Badge
@@ -85,7 +85,7 @@ export default async function LoansPage() {
                               {loan.status}
                             </Badge>
                           </TableCell>
-                          <TableCell>{format(new Date(loan.requested_at), "MMM dd, yyyy")}</TableCell>
+                          <TableCell>{format(new Date(loan.created_at), "MMM dd, yyyy")}</TableCell>
                           <TableCell>
                             {loan.status === "completed" && loan.updated_at ? (
                               format(new Date(loan.updated_at), "MMM dd, yyyy")
@@ -127,7 +127,7 @@ export default async function LoansPage() {
                     <TableBody>
                       {payments.map((payment) => (
                         <TableRow key={payment.id}>
-                          <TableCell className="font-medium">{getMonthYearLabel(payment.month_year)}</TableCell>
+                          <TableCell className="font-medium">{payment.period_key || "N/A"}</TableCell>
                           <TableCell className="text-right">{formatCurrency(Number(payment.principal_paid))}</TableCell>
                           <TableCell className="text-right">{formatCurrency(Number(payment.interest_paid))}</TableCell>
                           <TableCell className="text-center">

@@ -17,15 +17,15 @@ interface MonthlyReportDialogProps {
   monthYear: string
   records: Array<{
     id: string
-    opening_outstanding: number
-    monthly_subscription: number
-    interest_paid: number
-    principal_paid: number
-    new_loan_taken: number
-    penalty: number
-    closing_outstanding: number
-    total_monthly_income: number
-    income_difference: number
+    opening_outstanding: number | null
+    monthly_subscription: number | null
+    interest_paid: number | null
+    principal_paid: number | null
+    new_loan_taken: number | null
+    penalty: number | null
+    closing_outstanding: number | null
+    total_monthly_income: number | null
+    income_difference: number | null
     profiles: {
       full_name: string
       member_id: string | null
@@ -34,18 +34,19 @@ interface MonthlyReportDialogProps {
 }
 
 export function MonthlyReportDialog({ monthYear, records }: MonthlyReportDialogProps) {
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number | null | undefined) => {
+    if (amount == null) return "₹0"
     return `₹${amount.toLocaleString()}`
   }
 
   const groupTotals = {
-    totalSubscription: records.reduce((sum, r) => sum + r.monthly_subscription, 0),
-    totalInterest: records.reduce((sum, r) => sum + r.interest_paid, 0),
-    totalPrincipal: records.reduce((sum, r) => sum + r.principal_paid, 0),
-    totalNewLoans: records.reduce((sum, r) => sum + r.new_loan_taken, 0),
-    totalPenalty: records.reduce((sum, r) => sum + r.penalty, 0),
-    totalIncome: records.reduce((sum, r) => sum + r.total_monthly_income, 0),
-    totalOutstanding: records.reduce((sum, r) => sum + r.closing_outstanding, 0),
+    totalSubscription: records.reduce((sum, r) => sum + (r.monthly_subscription ?? 0), 0),
+    totalInterest: records.reduce((sum, r) => sum + (r.interest_paid ?? 0), 0),
+    totalPrincipal: records.reduce((sum, r) => sum + (r.principal_paid ?? 0), 0),
+    totalNewLoans: records.reduce((sum, r) => sum + (r.new_loan_taken ?? 0), 0),
+    totalPenalty: records.reduce((sum, r) => sum + (r.penalty ?? 0), 0),
+    totalIncome: records.reduce((sum, r) => sum + (r.total_monthly_income ?? 0), 0),
+    totalOutstanding: records.reduce((sum, r) => sum + (r.closing_outstanding ?? 0), 0),
   }
 
   // Sort by member_id

@@ -10,10 +10,16 @@ export default async function AdminRequestsPage() {
   const profile = await requireAdmin()
   const supabase = await createClient()
 
-  const { data: requests } = await supabase
-    .from("loan_requests")
-    .select("*, profiles!loan_requests_user_id_fkey(full_name, email)")
-    .order("created_at", { ascending: false })
+  const { data: requests } = await supabase.from("loan_requests").select("*").order("created_at", { ascending: false })
+
+  const { data: profiles } = await supabase.from("profiles").select("id, full_name, email, member_id")
+
+  // Join profiles data with requests
+  const requestsWithProfiles =
+    requests?.map((request) => ({
+      ...request,
+      profiles: profiles?.find((p) => p.id === request.user_id) || { full_name: "Unknown", email: "", member_id: "" },
+    })) || []
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -32,7 +38,7 @@ export default async function AdminRequestsPage() {
             </CardHeader>
             <CardContent>
               <LoanRequestsTable
-                requests={requests?.filter((r) => r.status === "pending") || []}
+                requests={requestsWithProfiles?.filter((r) => r.status === "pending") || []}
                 adminId={profile.id}
               />
             </CardContent>
@@ -43,7 +49,7 @@ export default async function AdminRequestsPage() {
               <CardTitle>Request History</CardTitle>
             </CardHeader>
             <CardContent>
-              <LoanRequestHistoryTable requests={requests?.filter((r) => r.status !== "pending") || []} />
+              <LoanRequestHistoryTable requests={requestsWithProfiles?.filter((r) => r.status !== "pending") || []} />
             </CardContent>
           </Card>
         </div>

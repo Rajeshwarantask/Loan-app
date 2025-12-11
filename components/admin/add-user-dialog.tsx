@@ -37,7 +37,6 @@ export function AddUserDialog() {
     const fullName = formData.get("fullName") as string
     const phone = formData.get("phone") as string
     const role = formData.get("role") as string
-    const monthlyContribution = formData.get("monthlyContribution") as string
 
     try {
       const supabase = createClient()
@@ -62,7 +61,6 @@ export function AddUserDialog() {
         const { error: profileError } = await supabase
           .from("profiles")
           .update({
-            monthly_contribution: Number.parseFloat(monthlyContribution),
             phone: phone || null,
             whatsapp_link: phone ? `https://wa.me/${phone.replace(/\D/g, "")}` : null,
           })
@@ -122,17 +120,6 @@ export function AddUserDialog() {
                   <SelectItem value="admin">Admin</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="monthlyContribution">Monthly Contribution (₹)</Label>
-              <Input
-                id="monthlyContribution"
-                name="monthlyContribution"
-                type="number"
-                defaultValue="2000"
-                step="100"
-                min="0"
-              />
             </div>
             {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-600">{error}</div>}
           </div>

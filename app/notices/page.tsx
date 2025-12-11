@@ -23,10 +23,16 @@ export default async function NoticesPage() {
     redirect("/auth/login")
   }
 
-  const { data: notices } = await supabase
-    .from("notices")
-    .select("*, profiles!notices_created_by_fkey(full_name)")
-    .order("created_at", { ascending: false })
+  const { data: notices } = await supabase.from("notices").select("*").order("created_at", { ascending: false })
+
+  const { data: profiles } = await supabase.from("profiles").select("id, full_name")
+
+  // Join profiles data with notices
+  const noticesWithProfiles =
+    notices?.map((notice) => ({
+      ...notice,
+      profiles: profiles?.find((p) => p.id === notice.created_by),
+    })) || []
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -39,9 +45,9 @@ export default async function NoticesPage() {
             <p className="text-muted-foreground">Important announcements from the community</p>
           </div>
 
-          {notices && notices.length > 0 ? (
+          {noticesWithProfiles && noticesWithProfiles.length > 0 ? (
             <div className="space-y-4">
-              {notices.map((notice) => (
+              {noticesWithProfiles.map((notice) => (
                 <Card key={notice.id}>
                   <CardHeader>
                     <div className="flex items-start justify-between gap-4">

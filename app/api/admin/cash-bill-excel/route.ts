@@ -29,62 +29,80 @@ function cleanNameAndVoucher(user: AnyObj) {
 export async function POST(request: NextRequest) {
   try {
     console.log("[v0] Cash bill API called")
-    const { selectedUser } = await request.json()
+    const { selectedUser, monthYear } = await request.json()
 
     const supabase = await createClient()
 
-    // Build cash bill data from profiles, loans, and monthly_loan_records
-    let profilesQuery = supabase
-      .from("profiles")
-      .select("id, full_name, member_id, monthly_subscription")
-      .not("member_id", "is", null)
-      .order("member_id")
+    // First get monthly records
+    let monthlyRecordsQuery = supabase.from("monthly_loan_records").select("*").order("user_id")
 
-    if (selectedUser) {
-      profilesQuery = profilesQuery.eq("id", selectedUser)
+    if (monthYear) {
+      monthlyRecordsQuery = monthlyRecordsQuery.eq("month_year", monthYear)
     }
 
-    const { data: profiles, error: profilesError } = await profilesQuery
-    if (profilesError) {
-      console.error("[v0] Error fetching profiles:", profilesError)
+    if (selectedUser) {
+      monthlyRecordsQuery = monthlyRecordsQuery.eq("user_id", selectedUser)
+    }
+
+    const { data: monthlyRecords, error: recordsError } = await monthlyRecordsQuery
+    if (recordsError) {
+      console.error("[v0] Error fetching monthly records:", recordsError.message)
       return NextResponse.json(
-        { error: "Failed to fetch cash bill data", details: profilesError.message },
+        { error: "Failed to fetch cash bill data", details: recordsError.message },
         { status: 500 },
       )
     }
-    if (!profiles || profiles.length === 0) {
-      return NextResponse.json({ error: "No users found" }, { status: 404 })
+    if (!monthlyRecords || monthlyRecords.length === 0) {
+      return NextResponse.json({ error: "No cash bill data found" }, { status: 404 })
     }
 
-    // Fetch active loans for all users
-    const { data: loans } = await supabase
-      .from("loans")
-      .select("user_id, principal_remaining, outstanding_interest, monthly_emi_amount")
-      .eq("status", "active")
+    // Get unique user IDs to fetch profile data
+    const userIds = [...new Set(monthlyRecords.map((r) => r.user_id))]
 
-    // Build user data with loan information
-    const users = profiles.map((profile) => {
-      const userLoans = loans?.filter((l) => l.user_id === profile.id) || []
-      const totalLoanBalance = userLoans.reduce((sum, loan) => sum + (loan.principal_remaining || 0), 0)
-      const totalInterest = userLoans.reduce((sum, loan) => sum + (loan.outstanding_interest || 0), 0)
-      const monthlyEmi = userLoans.reduce((sum, loan) => sum + (loan.monthly_emi_amount || 0), 0)
+    // Fetch profiles separately
+    const { data: profiles, error: profilesError } = await supabase
+      .from("profiles")
+      .select("id, member_id, full_name, monthly_subscription")
+      .in("id", userIds)
 
-      return {
-        user_id: profile.id,
-        full_name: profile.full_name,
-        member_id: profile.member_id,
-        name: profile.full_name,
-        voucher_no: profile.member_id,
-        monthly_installment: profile.monthly_subscription || 2100,
-        total_loan_balance: totalLoanBalance,
-        monthly_emi: monthlyEmi,
-        fine: 0, // Can be fetched from profiles.fine if needed
-        // Additional calculated fields for compatibility
-        monthly_installment_amount: profile.monthly_subscription || 2100,
-        loan_balance: totalLoanBalance,
-        total_loan: totalLoanBalance,
-      }
-    })
+    if (profilesError) {
+      console.error("[v0] Error fetching profiles:", profilesError.message)
+      return NextResponse.json(
+        { error: "Failed to fetch profile data", details: profilesError.message },
+        { status: 500 },
+      )
+    }
+
+    // Create a map for easy lookup
+    const profileMap = new Map(profiles?.map((p) => [p.id, p]) || [])
+
+    // Combine the data
+    const users = monthlyRecords
+      .map((record) => {
+        const profile = profileMap.get(record.user_id)
+        return {
+          user_id: record.user_id,
+          full_name: profile?.full_name || "",
+          member_id: profile?.member_id || "",
+          name: profile?.full_name || "",
+          voucher_no: profile?.member_id || "",
+          monthly_installment: record.monthly_subscription || profile?.monthly_subscription || 2100,
+          total_loan_balance: record.closing_outstanding || 0,
+          monthly_emi: record.additional_principal || 0,
+          fine: record.penalty || 0,
+          // Additional fields for compatibility
+          monthly_installment_amount: record.monthly_subscription || profile?.monthly_subscription || 2100,
+          loan_balance: record.closing_outstanding || 0,
+          total_loan: record.closing_outstanding || 0,
+          available_loan: record.available_loan_amount || 400000 - (record.closing_outstanding || 0),
+        }
+      })
+      .sort((a, b) => {
+        // Sort by member_id
+        const aId = a.member_id || ""
+        const bId = b.member_id || ""
+        return aId.localeCompare(bId)
+      })
 
     const wb = new ExcelJS.Workbook()
     wb.creator = "Financial Community App"
@@ -151,13 +169,11 @@ export async function POST(request: NextRequest) {
       if (extractedVoucher) voucher = String(extractedVoucher).trim()
       else voucher = user.member_id != null ? String(user.member_id).trim() : ""
 
-      // Map DB fields (fallbacks)
-      const monthlyInstallment = safeNum(
-        user.monthly_installment ?? user.monthly_emi ?? user.monthly_installment_amount,
-      )
-      const totalLoan = safeNum(user.total_loan_balance ?? user.loan_balance ?? user.total_loan)
-      const monthlyEmi = safeNum(user.monthly_emi ?? user.monthly_installment)
+      const monthlyInstallment = safeNum(user.monthly_installment)
+      const totalLoan = safeNum(user.total_loan_balance) // This is now total_loan_outstanding
+      const monthlyEmi = safeNum(user.monthly_emi) // This is previous_month_principal_received
       const fine = safeNum(user.fine)
+      const availableLoan = safeNum(user.available_loan)
 
       // Rows indices (unchanged relative logic)
       const titleRow = topRow
@@ -236,10 +252,7 @@ export async function POST(request: NextRequest) {
 
       ws.getCell(firstData + 4, leftCol).value = "Available Loan"
       const availableCell = ws.getCell(firstData + 4, leftCol + 1)
-      availableCell.value = {
-        formula: `400000 - ${totalLoanCell.address}`,
-        result: Math.max(0, 400000 - totalLoan),
-      }
+      availableCell.value = availableLoan
       availableCell.numFmt = indianNumFmt
       availableCell.alignment = { horizontal: "right", vertical: "middle" }
 

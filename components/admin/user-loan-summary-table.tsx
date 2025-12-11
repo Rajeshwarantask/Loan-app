@@ -19,10 +19,10 @@ interface Profile {
 interface Loan {
   id: string
   user_id: string
-  amount: number
+  loan_amount: number
   interest_rate: number
   status: string
-  requested_at: string
+  created_at: string
   profiles: Profile
 }
 
@@ -81,7 +81,7 @@ export function UserLoanSummaryTable({ loans, payments }: UserLoanSummaryTablePr
       }
 
       const userSummary = userMap.get(loan.user_id)!
-      userSummary.totalLoanAmount += Number(loan.amount)
+      userSummary.totalLoanAmount += Number(loan.loan_amount)
 
       const loanPayments = payments.filter((p) => p.loan_id === loan.id)
       const loanInterestPaid = loanPayments.reduce((sum, p) => sum + Number(p.interest_paid || 0), 0)
@@ -89,10 +89,10 @@ export function UserLoanSummaryTable({ loans, payments }: UserLoanSummaryTablePr
 
       userSummary.loanHistory.push({
         loanId: loan.id,
-        amount: Number(loan.amount),
+        amount: Number(loan.loan_amount),
         interestRate: loan.interest_rate,
         status: loan.status,
-        createdDate: loan.requested_at,
+        createdDate: loan.created_at,
         payments: loanPayments,
       })
     })

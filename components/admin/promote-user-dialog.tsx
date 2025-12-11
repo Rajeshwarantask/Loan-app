@@ -64,7 +64,7 @@ export function PromoteUserDialog({ user, open, onClose }: PromoteUserDialogProp
           </DialogTitle>
           <DialogDescription>
             {newRole === "admin"
-              ? `Are you sure you want to promote ${user.full_name} to Admin? They will have full access to all admin features including user management, loan approvals, and system settings.`
+              ? `Are you sure you want to promote ${user.full_name} to Admin? They will have full access to all admin features including user management and loan approvals.`
               : `Are you sure you want to demote ${user.full_name} to User? They will lose access to all admin features and only see their own data.`}
           </DialogDescription>
         </DialogHeader>

@@ -8,13 +8,16 @@ export default async function AdminLoansPage() {
   const profile = await requireAdmin()
   const supabase = await createClient()
 
-  const { data: loans } = await supabase
-    .from("loans")
-    .select(`
-      *,
-      profiles!loans_user_id_fkey(id, full_name, email, member_id, phone)
-    `)
-    .order("profiles(member_id)", { ascending: true })
+  const { data: loans } = await supabase.from("loans").select("*").order("member_id", { ascending: true })
+
+  const { data: profiles } = await supabase.from("profiles").select("id, full_name, email, member_id, phone")
+
+  // Join profiles data with loans
+  const loansWithProfiles =
+    loans?.map((loan) => ({
+      ...loan,
+      profiles: profiles?.find((p) => p.id === loan.user_id),
+    })) || []
 
   // Fetch loan payments for history
   const { data: payments } = await supabase
@@ -29,7 +32,7 @@ export default async function AdminLoansPage() {
       <Sidebar role={profile.role} userName={profile.full_name} />
 
       <main className="flex-1 overflow-y-auto pb-20 md:pb-0">
-        <LoanManagementClient loans={loans || []} payments={payments || []} users={users || []} />
+        <LoanManagementClient loans={loansWithProfiles || []} payments={payments || []} users={users || []} />
       </main>
 
       <MobileNav role={profile.role} />

@@ -22,13 +22,11 @@ interface Profile {
 interface Loan {
   id: string
   user_id: string
-  amount: number
+  loan_amount: number
   interest_rate: number
-  duration_months: number
   status: string
-  requested_at: string
-  principal_remaining?: number
-  outstanding_interest?: number
+  created_at: string
+  remaining_balance?: number
   profiles: Profile
 }
 

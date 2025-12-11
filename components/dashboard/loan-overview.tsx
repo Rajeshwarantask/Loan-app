@@ -24,7 +24,7 @@ export function LoanOverview({ userId, role }: LoanOverviewProps) {
 
       const { data: loans, error: loansError } = await supabase
         .from("loans")
-        .select("amount, status")
+        .select("loan_amount, remaining_balance, status")
         .eq("user_id", userId)
       console.log("[v0] LoanOverview - loans data:", loans, "error:", loansError)
 
@@ -34,21 +34,23 @@ export function LoanOverview({ userId, role }: LoanOverviewProps) {
         .eq("user_id", userId)
       console.log("[v0] LoanOverview - payments data:", payments, "error:", paymentsError)
 
-      const totalLoanTaken = loans?.reduce((sum, loan) => sum + Number(loan.amount), 0) || 0
+      const totalLoanTaken = loans?.reduce((sum, loan) => sum + Number(loan.loan_amount), 0) || 0
 
       const totalInterestPaid = payments?.reduce((sum, payment) => sum + Number(payment.interest_paid), 0) || 0
 
       const pendingBalance =
-        loans?.filter((loan) => loan.status === "active").reduce((sum, loan) => sum + Number(loan.amount), 0) || 0
+        loans
+          ?.filter((loan) => loan.status === "active")
+          .reduce((sum, loan) => sum + Number(loan.remaining_balance), 0) || 0
 
       console.log("[v0] LoanOverview - calculated stats:", { totalLoanTaken, totalInterestPaid, pendingBalance })
 
       setStats({ totalLoanTaken, totalInterestPaid, pendingBalance })
 
       const data = [
-        { name: "Total Loan", value: totalLoanTaken, color: "#8b5cf6" }, // Purple
-        { name: "Interest Paid", value: totalInterestPaid, color: "#10b981" }, // Green
-        { name: "Pending", value: pendingBalance, color: "#f97316" }, // Orange
+        { name: "Total Loan", value: totalLoanTaken, color: "#8b5cf6" },
+        { name: "Interest Paid", value: totalInterestPaid, color: "#10b981" },
+        { name: "Pending", value: pendingBalance, color: "#f97316" },
       ].filter((item) => item.value > 0)
 
       console.log("[v0] LoanOverview - chart data:", data)

@@ -14,17 +14,22 @@ interface MonthlyRecord {
   id: string
   user_id: string
   month_year: string
-  opening_outstanding: number
-  monthly_subscription: number
-  interest_calculated: number
-  interest_paid: number
-  principal_paid: number
-  new_loan_taken: number
-  penalty: number
-  closing_outstanding: number
-  total_monthly_income: number
-  income_difference: number
+  period_month: number
+  period_year: number
   status: string
+  monthly_subscription: number
+  total_loan_taken: number
+  additional_principal: number
+  new_loan_taken: number
+  total_loan_outstanding: number
+  monthly_interest_income: number
+  monthly_installment_income: number
+  penalty: number
+  previous_month_total_income: number
+  total_income_current_month: number
+  difference: number
+  previous_month_total_loan_outstanding: number
+  available_loan_amount: number
   profiles: Profile
 }
 
@@ -34,84 +39,94 @@ interface MonthlyRecordTableProps {
 }
 
 export function MonthlyRecordTable({ records, monthYear }: MonthlyRecordTableProps) {
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number | null | undefined) => {
+    if (amount === null || amount === undefined) {
+      return "₹0"
+    }
     return `₹${amount.toLocaleString()}`
   }
 
-  // Sort by member_id
   const sortedRecords = [...records].sort((a, b) => {
     const aId = a.profiles.member_id || ""
     const bId = b.profiles.member_id || ""
     return aId.localeCompare(bId)
   })
 
-  const calculateClosingBalance = (record: MonthlyRecord) => {
-    if (record.status === "finalized" && record.closing_outstanding) {
-      return record.closing_outstanding
-    }
-    return record.opening_outstanding + record.new_loan_taken - record.principal_paid
-  }
-
-  const calculateTotalIncome = (record: MonthlyRecord) => {
-    if (record.status === "finalized" && record.total_monthly_income) {
-      return record.total_monthly_income
-    }
-    return record.monthly_subscription + record.interest_paid + record.principal_paid + record.penalty
-  }
-
   return (
     <div className="rounded-md border overflow-x-auto">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[100px]">Member ID</TableHead>
-            <TableHead>Name</TableHead>
-            <TableHead className="text-right">Opening</TableHead>
-            <TableHead className="text-right">Interest Due</TableHead>
-            <TableHead className="text-right">New Loan</TableHead>
-            <TableHead className="text-right">Principal Paid</TableHead>
-            <TableHead className="text-right">Interest Paid</TableHead>
-            <TableHead className="text-right">Subscription</TableHead>
-            <TableHead className="text-right">Total Income</TableHead>
-            <TableHead className="text-right">Closing</TableHead>
-            <TableHead className="text-center">Status</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
+            <TableHead className="w-[60px] whitespace-normal">V ID</TableHead>
+            <TableHead className="w-[120px] whitespace-normal">Name</TableHead>
+            <TableHead className="text-right w-[90px] whitespace-normal">Monthly Subscription Fee</TableHead>
+            <TableHead className="text-right w-[90px] whitespace-normal">Total Loan Taken</TableHead>
+            <TableHead className="text-right w-[90px] whitespace-normal">Additional Principal</TableHead>
+            <TableHead className="text-right w-[90px] whitespace-normal">New Loans Issued Last Month</TableHead>
+            <TableHead className="text-right w-[90px] whitespace-normal">Total Loan Outstanding</TableHead>
+            <TableHead className="text-right w-[90px] whitespace-normal">Monthly Interest Income</TableHead>
+            <TableHead className="text-right w-[90px] whitespace-normal">Monthly Installment Income</TableHead>
+            <TableHead className="text-right w-[80px] whitespace-normal">Penalty Income</TableHead>
+            <TableHead className="text-right w-[90px] whitespace-normal">Previous Month Interest Income</TableHead>
+            <TableHead className="text-right w-[90px] whitespace-normal">Total Income (Current Month)</TableHead>
+            <TableHead className="text-right w-[90px] whitespace-normal">Previous Month Total Income</TableHead>
+            <TableHead className="text-right w-[80px] whitespace-normal">Difference</TableHead>
+            <TableHead className="text-right w-[90px] whitespace-normal">
+              Previous Month Total Loan Outstanding
+            </TableHead>
+            <TableHead className="text-right w-[90px] whitespace-normal">Available Loan</TableHead>
+            <TableHead className="text-center w-[80px] whitespace-normal">Status</TableHead>
+            <TableHead className="text-right w-[80px]">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {sortedRecords.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
+              <TableCell colSpan={18} className="text-center py-8 text-muted-foreground">
                 No records found for this month
               </TableCell>
             </TableRow>
           ) : (
             sortedRecords.map((record) => (
               <TableRow key={record.id}>
-                <TableCell className="font-medium">{record.profiles.member_id || "N/A"}</TableCell>
-                <TableCell>{record.profiles.full_name}</TableCell>
-                <TableCell className="text-right">{formatCurrency(record.opening_outstanding)}</TableCell>
-                <TableCell className="text-right">
-                  <span
-                    className={record.interest_paid < record.interest_calculated ? "text-orange-600 font-medium" : ""}
-                  >
-                    {formatCurrency(record.interest_calculated)}
-                  </span>
+                <TableCell className="font-medium px-2 md:px-4">{record.profiles.member_id || "N/A"}</TableCell>
+                <TableCell className="px-2 md:px-4">{record.profiles.full_name}</TableCell>
+                <TableCell className="text-right px-2 md:px-4">{formatCurrency(record.monthly_subscription)}</TableCell>
+                <TableCell className="text-right px-2 md:px-4">{formatCurrency(record.total_loan_taken)}</TableCell>
+                <TableCell className="text-right px-2 md:px-4">{formatCurrency(record.additional_principal)}</TableCell>
+                <TableCell className="text-right px-2 md:px-4">{formatCurrency(record.new_loan_taken)}</TableCell>
+                <TableCell className="text-right font-medium px-2 md:px-4">
+                  {formatCurrency(record.total_loan_outstanding)}
                 </TableCell>
-                <TableCell className="text-right">{formatCurrency(record.new_loan_taken)}</TableCell>
-                <TableCell className="text-right">{formatCurrency(record.principal_paid)}</TableCell>
-                <TableCell className="text-right">{formatCurrency(record.interest_paid)}</TableCell>
-                <TableCell className="text-right">{formatCurrency(record.monthly_subscription)}</TableCell>
-                <TableCell className="text-right font-medium">{formatCurrency(calculateTotalIncome(record))}</TableCell>
-                <TableCell className="text-right font-medium">
-                  {formatCurrency(calculateClosingBalance(record))}
+                <TableCell className="text-right px-2 md:px-4">
+                  {formatCurrency(record.monthly_interest_income)}
                 </TableCell>
-                <TableCell className="text-center">
+                <TableCell className="text-right px-2 md:px-4">
+                  {formatCurrency(record.monthly_installment_income)}
+                </TableCell>
+                <TableCell className="text-right px-2 md:px-4">{formatCurrency(record.penalty)}</TableCell>
+                <TableCell className="text-right px-2 md:px-4">
+                  {formatCurrency(record.previous_month_total_income)}
+                </TableCell>
+                <TableCell className="text-right font-medium px-2 md:px-4">
+                  {formatCurrency(record.total_income_current_month)}
+                </TableCell>
+                <TableCell className="text-right px-2 md:px-4">
+                  {formatCurrency(record.previous_month_total_income)}
+                </TableCell>
+                <TableCell className="text-right px-2 md:px-4">{formatCurrency(record.difference)}</TableCell>
+                <TableCell className="text-right px-2 md:px-4">
+                  {formatCurrency(record.previous_month_total_loan_outstanding)}
+                </TableCell>
+                <TableCell className="text-right text-green-600 font-medium px-2 md:px-4">
+                  {formatCurrency(record.available_loan_amount)}
+                </TableCell>
+                <TableCell className="text-center px-2 md:px-4">
                   <Badge variant={record.status === "finalized" ? "default" : "secondary"}>
                     {record.status === "finalized" ? "Finalized" : "Draft"}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-right">
+                <TableCell className="text-right px-2 md:px-4">
                   <EditMonthlyRecordDialog record={record} />
                 </TableCell>
               </TableRow>

@@ -21,13 +21,14 @@ import { Plus } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 
 interface AddLoanDialogProps {
-  users: Array<{ id: string; full_name: string; email: string }>
+  users: Array<{ id: string; full_name: string; email: string; member_id: string }>
 }
 
 export function AddLoanDialog({ users }: AddLoanDialogProps) {
   const [open, setOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [selectedUserId, setSelectedUserId] = useState<string>("")
   const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -48,21 +49,32 @@ export function AddLoanDialog({ users }: AddLoanDialogProps) {
       return
     }
 
+    const selectedUser = users.find((u) => u.id === userId)
+    if (!selectedUser) {
+      setError("Please select a valid user")
+      setIsLoading(false)
+      return
+    }
+
     try {
       const supabase = createClient()
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
 
       const { data: loanData, error: loanError } = await supabase
         .from("loans")
         .insert({
           user_id: userId,
-          amount: principal,
+          member_id: selectedUser.member_id,
+          loan_amount: principal,
           interest_rate: Number.parseFloat(interestRate),
-          installment_loan_taken: principal,
-          principal_remaining: principal,
-          outstanding_interest: 0,
+          remaining_balance: principal,
           purpose: purpose || null,
+          approved_by: user?.id || null,
           status: "active",
-          approved_at: new Date().toISOString(),
+          payment_date: new Date().toISOString(),
         })
         .select()
 
@@ -98,14 +110,14 @@ export function AddLoanDialog({ users }: AddLoanDialogProps) {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="userId">User</Label>
-              <Select name="userId" required>
+              <Select name="userId" required onValueChange={setSelectedUserId}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select user" />
                 </SelectTrigger>
                 <SelectContent>
                   {users.map((user) => (
                     <SelectItem key={user.id} value={user.id}>
-                      {user.full_name}
+                      {user.member_id} - {user.full_name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -117,7 +129,7 @@ export function AddLoanDialog({ users }: AddLoanDialogProps) {
             </div>
             <div className="space-y-2">
               <Label htmlFor="interestRate">Interest Rate (%)</Label>
-              <Input id="interestRate" name="interestRate" type="number" step="0.1" defaultValue="15" required />
+              <Input id="interestRate" name="interestRate" type="number" step="0.5" defaultValue="1.5" required />
             </div>
             <div className="space-y-2">
               <Label htmlFor="purpose">Purpose</Label>

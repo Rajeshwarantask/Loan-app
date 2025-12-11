@@ -19,22 +19,24 @@ interface Profile {
 interface MonthlyRecord {
   id: string
   user_id: string
-  month_year: string
-  month_number: number
-  year_number: number
-  opening_outstanding: number
-  monthly_subscription: number
-  interest_calculated: number
-  interest_paid: number
-  principal_paid: number
-  new_loan_taken: number
-  penalty: number
-  closing_outstanding: number
-  total_monthly_income: number
-  previous_month_income: number
-  income_difference: number
+  member_id: string | null
+  period_key: string // Format: YYYY-MM
+  period_month: number
+  period_year: number
   status: string
-  notes: string | null
+  monthly_subscription: number
+  total_loan_taken: number
+  additional_principal: number
+  new_loan_taken: number
+  total_loan_outstanding: number
+  monthly_interest_income: number
+  monthly_installment_income: number
+  penalty: number
+  previous_month_total_income: number
+  total_income_current_month: number
+  difference: number
+  previous_month_total_loan_outstanding: number
+  available_loan_amount: number
   profiles: Profile
 }
 
@@ -46,24 +48,18 @@ interface MonthlyCycleClientProps {
 export function MonthlyCycleClient({ monthlyRecords, members }: MonthlyCycleClientProps) {
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null)
 
-  // Group records by month
   const recordsByMonth = useMemo(() => {
     const grouped = new Map<string, MonthlyRecord[]>()
     monthlyRecords.forEach((record) => {
-      const existing = grouped.get(record.month_year) || []
-      grouped.set(record.month_year, [...existing, record])
+      const existing = grouped.get(record.period_key) || []
+      grouped.set(record.period_key, [...existing, record])
     })
     return grouped
   }, [monthlyRecords])
 
-  // Get unique months sorted
   const availableMonths = useMemo(() => {
     return Array.from(recordsByMonth.keys()).sort((a, b) => {
-      const [aMonth, aYear] = a.split(" ")
-      const [bMonth, bYear] = b.split(" ")
-      const aDate = new Date(`${aMonth} 1, ${aYear}`)
-      const bDate = new Date(`${bMonth} 1, ${bYear}`)
-      return bDate.getTime() - aDate.getTime()
+      return b.localeCompare(a) // Descending order: 2025-12, 2025-11, etc.
     })
   }, [recordsByMonth])
 
@@ -72,27 +68,13 @@ export function MonthlyCycleClient({ monthlyRecords, members }: MonthlyCycleClie
   const monthStats = useMemo(() => {
     if (!currentMonthRecords.length) return null
 
-    const calculateClosingBalance = (r: MonthlyRecord) => {
-      if (r.status === "finalized" && r.closing_outstanding) {
-        return r.closing_outstanding
-      }
-      return r.opening_outstanding + (r.new_loan_taken || 0) - (r.principal_paid || 0)
-    }
-
-    const calculateTotalIncome = (r: MonthlyRecord) => {
-      if (r.status === "finalized" && r.total_monthly_income) {
-        return r.total_monthly_income
-      }
-      return (r.monthly_subscription || 0) + (r.interest_paid || 0) + (r.principal_paid || 0) + (r.penalty || 0)
-    }
-
-    const totalSubscription = currentMonthRecords.reduce((sum, r) => sum + (r.monthly_subscription || 0), 0)
-    const totalInterest = currentMonthRecords.reduce((sum, r) => sum + (r.interest_paid || 0), 0)
-    const totalPrincipal = currentMonthRecords.reduce((sum, r) => sum + (r.principal_paid || 0), 0)
-    const totalNewLoans = currentMonthRecords.reduce((sum, r) => sum + (r.new_loan_taken || 0), 0)
-    const totalPenalty = currentMonthRecords.reduce((sum, r) => sum + (r.penalty || 0), 0)
-    const totalIncome = currentMonthRecords.reduce((sum, r) => sum + calculateTotalIncome(r), 0)
-    const totalOutstanding = currentMonthRecords.reduce((sum, r) => sum + calculateClosingBalance(r), 0)
+    const totalSubscription = currentMonthRecords.reduce((sum, r) => sum + r.monthly_subscription, 0)
+    const totalInterest = currentMonthRecords.reduce((sum, r) => sum + r.monthly_interest_income, 0)
+    const totalPrincipal = currentMonthRecords.reduce((sum, r) => sum + r.additional_principal, 0)
+    const totalNewLoans = currentMonthRecords.reduce((sum, r) => sum + r.new_loan_taken, 0)
+    const totalPenalty = currentMonthRecords.reduce((sum, r) => sum + r.penalty, 0)
+    const totalIncome = currentMonthRecords.reduce((sum, r) => sum + r.total_income_current_month, 0)
+    const totalOutstanding = currentMonthRecords.reduce((sum, r) => sum + r.total_loan_outstanding, 0)
 
     const draftCount = currentMonthRecords.filter((r) => r.status === "draft").length
     const finalizedCount = currentMonthRecords.filter((r) => r.status === "finalized").length
@@ -109,6 +91,12 @@ export function MonthlyCycleClient({ monthlyRecords, members }: MonthlyCycleClie
       finalizedCount,
     }
   }, [currentMonthRecords])
+
+  const formatMonthDisplay = (periodKey: string) => {
+    const [year, month] = periodKey.split("-")
+    const date = new Date(Number.parseInt(year), Number.parseInt(month) - 1)
+    return date.toLocaleString("default", { month: "long", year: "numeric" })
+  }
 
   return (
     <div className="container max-w-7xl py-6 px-2 md:px-6 space-y-6">
@@ -142,19 +130,20 @@ export function MonthlyCycleClient({ monthlyRecords, members }: MonthlyCycleClie
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
-            {availableMonths.map((month) => {
-              const records = recordsByMonth.get(month) || []
+            {availableMonths.map((periodKey) => {
+              const records = recordsByMonth.get(periodKey) || []
               const allFinalized = records.every((r) => r.status === "finalized")
+              const displayMonth = formatMonthDisplay(periodKey)
               return (
                 <Button
-                  key={month}
-                  variant={selectedMonth === month ? "default" : "outline"}
+                  key={periodKey}
+                  variant={selectedMonth === periodKey ? "default" : "outline"}
                   className="justify-between"
-                  onClick={() => setSelectedMonth(month)}
+                  onClick={() => setSelectedMonth(periodKey)}
                 >
                   <span className="flex items-center gap-2">
                     <Calendar className="h-4 w-4" />
-                    {month}
+                    {displayMonth}
                   </span>
                   {allFinalized && <Check className="h-4 w-4 text-green-500" />}
                 </Button>
@@ -224,7 +213,7 @@ export function MonthlyCycleClient({ monthlyRecords, members }: MonthlyCycleClie
       {selectedMonth && (
         <Card>
           <CardHeader>
-            <CardTitle>Monthly Records - {selectedMonth}</CardTitle>
+            <CardTitle>Monthly Records - {formatMonthDisplay(selectedMonth)}</CardTitle>
             <CardDescription>
               Member-wise loan records for the month ({currentMonthRecords.length} members)
             </CardDescription>

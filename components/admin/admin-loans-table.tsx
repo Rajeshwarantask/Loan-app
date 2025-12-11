@@ -13,24 +13,22 @@ import { RecordPaymentUnifiedDialog } from "./record-payment-unified-dialog"
 
 interface Loan {
   id: string
-  amount: number
+  loan_amount: number
   interest_rate: number
-  duration_months: number
   status: string
-  requested_at: string
-  principal_remaining?: number
-  outstanding_interest?: number
+  created_at: string // changed from requested_at
+  remaining_balance?: number
   profiles: {
     full_name: string
     email: string
     member_id: string | null
   }
   user_id: string
+  member_id?: string
   loan_balance?: number
-  monthly_emi_amount?: number
+  monthly_emi?: number
   emi_monthly_interest?: number
   emi_balance?: number
-  installment_duration_months?: number
 }
 
 interface AdminLoansTableProps {
@@ -62,7 +60,7 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
 
         const { data: payments } = await supabase
           .from("loan_payments")
-          .select("payment_date, payment_type")
+          .select("payment_date")
           .eq("loan_id", loan.id)
           .gte("payment_date", firstDay)
           .lte("payment_date", lastDay)
@@ -92,18 +90,18 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
           <TableRow>
             <TableHead className="px-2 md:px-4">ID</TableHead>
             <TableHead className="px-2 md:px-4">User</TableHead>
+            <TableHead className="px-2 md:px-4">Total Loan</TableHead>
             <TableHead className="px-2 md:px-4">Principal</TableHead>
             <TableHead className="px-2 md:px-4 hidden md:table-cell">Rate</TableHead>
             <TableHead className="px-2 md:px-4">Status</TableHead>
             <TableHead className="px-2 md:px-4 hidden md:table-cell">Record</TableHead>
-            <TableHead className="px-2 md:px-4 hidden lg:table-cell">Date</TableHead>
             <TableHead className="text-right px-2 md:px-4">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {loans.map((loan) => {
             const recordStatus = recordStatusMap[loan.id]
-            const principalRemaining = loan.principal_remaining ?? loan.amount
+            const principalRemaining = loan.remaining_balance ?? loan.loan_amount
 
             return (
               <TableRow key={loan.id}>
@@ -111,6 +109,7 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
                 <TableCell className="px-2 md:px-4">
                   <div className="font-medium">{loan.profiles.full_name}</div>
                 </TableCell>
+                <TableCell className="font-semibold px-2 md:px-4">{formatCurrency(loan.loan_amount)}</TableCell>
                 <TableCell className="font-semibold px-2 md:px-4">{formatCurrency(principalRemaining)}</TableCell>
                 <TableCell className="px-2 md:px-4 hidden md:table-cell">{loan.interest_rate}%</TableCell>
                 <TableCell className="px-2 md:px-4">
@@ -137,9 +136,6 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
                       Not marked
                     </Badge>
                   )}
-                </TableCell>
-                <TableCell className="px-2 md:px-4 hidden lg:table-cell">
-                  {format(new Date(loan.requested_at), "MMM dd, yyyy")}
                 </TableCell>
                 <TableCell className="text-right px-2 md:px-4">
                   <div className="flex flex-col md:flex-row items-end md:items-center justify-end gap-1 md:gap-2">
@@ -172,13 +168,15 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
                                 <div className="text-sm">{selectedLoan.profiles.email}</div>
                               </div>
                               <div>
-                                <div className="text-sm font-medium text-muted-foreground">Original Amount</div>
-                                <div className="text-lg font-bold">{formatCurrency(Number(selectedLoan.amount))}</div>
+                                <div className="text-sm font-medium text-muted-foreground">Total Loan Taken</div>
+                                <div className="text-lg font-bold">
+                                  {formatCurrency(Number(selectedLoan.loan_amount))}
+                                </div>
                               </div>
                               <div>
                                 <div className="text-sm font-medium text-muted-foreground">Principal Remaining</div>
                                 <div className="text-lg font-bold">
-                                  {formatCurrency(selectedLoan.principal_remaining ?? selectedLoan.amount)}
+                                  {formatCurrency(selectedLoan.remaining_balance ?? selectedLoan.loan_amount)}
                                 </div>
                               </div>
                               <div>
@@ -190,19 +188,19 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
                                 <div className="font-semibold">
                                   {formatCurrency(
                                     Math.round(
-                                      ((selectedLoan.principal_remaining ?? selectedLoan.amount) *
+                                      ((selectedLoan.remaining_balance ?? selectedLoan.loan_amount) *
                                         selectedLoan.interest_rate) /
                                         100,
                                     ),
                                   )}
                                 </div>
                               </div>
-                              {selectedLoan.monthly_emi_amount && selectedLoan.monthly_emi_amount > 0 ? (
+                              {selectedLoan.monthly_emi && selectedLoan.monthly_emi > 0 ? (
                                 <>
                                   <div>
                                     <div className="text-sm font-medium text-muted-foreground">Monthly EMI</div>
                                     <div className="font-semibold">
-                                      {formatCurrency(Number(selectedLoan.monthly_emi_amount))}
+                                      {formatCurrency(Number(selectedLoan.monthly_emi))}
                                     </div>
                                   </div>
                                   <div>
@@ -235,9 +233,9 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
                                 </Badge>
                               </div>
                               <div>
-                                <div className="text-sm font-medium text-muted-foreground">Requested Date</div>
+                                <div className="text-sm font-medium text-muted-foreground">Created Date</div>
                                 <div className="text-sm">
-                                  {format(new Date(selectedLoan.requested_at), "MMM dd, yyyy")}
+                                  {format(new Date(selectedLoan.created_at), "MMM dd, yyyy")}
                                 </div>
                               </div>
                             </div>

@@ -14,7 +14,7 @@ export async function DashboardStats({ userId, role }: DashboardStatsProps) {
 
   if (role === "admin") {
     // Admin stats
-    const { data: loans } = await supabase.from("loans").select("amount, status")
+    const { data: loans } = await supabase.from("loans").select("loan_amount, status")
 
     const { data: payments } = await supabase.from("loan_payments").select("interest_paid, status")
 
@@ -22,7 +22,7 @@ export async function DashboardStats({ userId, role }: DashboardStatsProps) {
 
     const totalLoansIssued =
       loans?.reduce(
-        (sum, loan) => (loan.status === "active" || loan.status === "completed" ? sum + Number(loan.amount) : sum),
+        (sum, loan) => (loan.status === "active" || loan.status === "completed" ? sum + Number(loan.loan_amount) : sum),
         0,
       ) || 0
 
@@ -79,14 +79,17 @@ export async function DashboardStats({ userId, role }: DashboardStatsProps) {
   }
 
   // User stats
-  const { data: loans } = await supabase.from("loans").select("amount, status").eq("user_id", userId)
+  const { data: loans } = await supabase
+    .from("loans")
+    .select("loan_amount, remaining_balance, status")
+    .eq("user_id", userId)
 
   const { data: payments } = await supabase
     .from("loan_payments")
     .select("interest_paid, remaining_balance, status")
     .eq("user_id", userId)
 
-  const totalLoanTaken = loans?.reduce((sum, loan) => sum + Number(loan.amount), 0) || 0
+  const totalLoanTaken = loans?.reduce((sum, loan) => sum + Number(loan.loan_amount), 0) || 0
 
   const totalInterestPaid =
     payments?.reduce((sum, payment) => (payment.status === "paid" ? sum + Number(payment.interest_paid) : sum), 0) || 0
@@ -94,11 +97,8 @@ export async function DashboardStats({ userId, role }: DashboardStatsProps) {
   const activeLoans = loans?.filter((loan) => loan.status === "active") || []
 
   const pendingBalance =
-    payments?.reduce(
-      (sum, payment) =>
-        payment.status === "unpaid" || payment.status === "partial" ? sum + Number(payment.remaining_balance) : sum,
-      0,
-    ) || 0
+    loans?.filter((loan) => loan.status === "active").reduce((sum, loan) => sum + Number(loan.remaining_balance), 0) ||
+    0
 
   const missedPayments = payments?.filter((payment) => payment.status === "missed").length || 0
 

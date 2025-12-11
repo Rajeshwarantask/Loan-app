@@ -25,11 +25,19 @@ interface EditMonthlyRecordDialogProps {
     month_year: string
     opening_outstanding: number
     monthly_subscription: number
-    interest_calculated: number
+    interest_due: number
     interest_paid: number
     principal_paid: number
     new_loan_taken: number
     penalty: number
+    total_loan_taken: number
+    additional_principal: number
+    monthly_installment_income: number
+    previous_month_interest_income: number
+    previous_month_total_income: number
+    previous_month_total_loan_outstanding: number
+    income_difference: number
+    available_loan_amount: number
     status: string
     notes: string | null
     profiles: {
@@ -44,11 +52,12 @@ export function EditMonthlyRecordDialog({ record }: EditMonthlyRecordDialogProps
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const [interestPaid, setInterestPaid] = useState(record.interest_paid.toString())
-  const [principalPaid, setPrincipalPaid] = useState(record.principal_paid.toString())
-  const [newLoanTaken, setNewLoanTaken] = useState(record.new_loan_taken.toString())
-  const [penalty, setPenalty] = useState(record.penalty.toString())
+  const [interestPaid, setInterestPaid] = useState((record.interest_paid ?? 0).toString())
+  const [principalPaid, setPrincipalPaid] = useState((record.principal_paid ?? 0).toString())
+  const [newLoanTaken, setNewLoanTaken] = useState((record.new_loan_taken ?? 0).toString())
+  const [penalty, setPenalty] = useState((record.penalty ?? 0).toString())
   const [notes, setNotes] = useState(record.notes || "")
+  const [additionalPrincipal, setAdditionalPrincipal] = useState((record.additional_principal ?? 0).toString())
 
   const router = useRouter()
 
@@ -71,17 +80,26 @@ export function EditMonthlyRecordDialog({ record }: EditMonthlyRecordDialogProps
       const principalPaidNum = Number.parseFloat(principalPaid)
       const newLoanTakenNum = Number.parseFloat(newLoanTaken)
       const penaltyNum = Number.parseFloat(penalty)
+      const additionalPrincipalNum = Number.parseFloat(additionalPrincipal)
 
-      const closingOutstanding = record.opening_outstanding + newLoanTakenNum - principalPaidNum
-      const totalMonthlyIncome = record.monthly_subscription + interestPaidNum + principalPaidNum + penaltyNum
+      const openingOutstanding = record.opening_outstanding ?? 0
+      const monthlySubscription = record.monthly_subscription ?? 0
+
+      const closingOutstanding = openingOutstanding + newLoanTakenNum - principalPaidNum - additionalPrincipalNum
+      const totalMonthlyIncome = monthlySubscription + interestPaidNum + principalPaidNum + penaltyNum
+      const installmentIncome = interestPaidNum + principalPaidNum
+      const availableLoanAmount = 400000 - closingOutstanding
 
       const updateData = {
         interest_paid: interestPaidNum,
         principal_paid: principalPaidNum,
         new_loan_taken: newLoanTakenNum,
         penalty: penaltyNum,
+        additional_principal: additionalPrincipalNum,
         closing_outstanding: closingOutstanding,
         total_monthly_income: totalMonthlyIncome,
+        monthly_installment_income: installmentIncome,
+        available_loan_amount: availableLoanAmount,
         notes,
         updated_at: new Date().toISOString(),
       }
@@ -154,7 +172,7 @@ export function EditMonthlyRecordDialog({ record }: EditMonthlyRecordDialogProps
             Edit Monthly Record - {record.profiles.member_id} {record.profiles.full_name}
           </DialogTitle>
           <DialogDescription>
-            {record.month_year} • Opening Outstanding: ₹{record.opening_outstanding.toLocaleString()}
+            {record.month_year} • Opening Outstanding: ₹{(record.opening_outstanding ?? 0).toLocaleString()}
           </DialogDescription>
         </DialogHeader>
 
@@ -172,7 +190,7 @@ export function EditMonthlyRecordDialog({ record }: EditMonthlyRecordDialogProps
                 disabled={isFinalized}
               />
               <p className="text-xs text-muted-foreground">
-                Calculated: ₹{record.interest_calculated.toLocaleString()}
+                Calculated: ₹{(record.interest_due ?? 0).toLocaleString()}
               </p>
             </div>
 
@@ -217,6 +235,22 @@ export function EditMonthlyRecordDialog({ record }: EditMonthlyRecordDialogProps
                 onChange={(e) => setPenalty(e.target.value)}
                 disabled={isFinalized}
               />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="additionalPrincipal">Additional Principal</Label>
+              <Input
+                id="additionalPrincipal"
+                type="number"
+                step="0.01"
+                min="0"
+                value={additionalPrincipal}
+                onChange={(e) => setAdditionalPrincipal(e.target.value)}
+                disabled={isFinalized}
+              />
+              <p className="text-xs text-muted-foreground">Reduces outstanding balance</p>
             </div>
           </div>
 
