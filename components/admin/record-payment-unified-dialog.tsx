@@ -52,9 +52,8 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
 
   const additionalPrincipal = Number(additionalPrincipalPayment) || 0
   const newLoan = Number(newLoanAmount) || 0
-  const principalWithNewLoan = principalRemaining + newLoan - additionalPrincipal
-  const balanceAfterPayment = Math.max(0, principalWithNewLoan)
-  const calculatedMonthlyInterest = Math.round((balanceAfterPayment * loan.interest_rate) / 100)
+  const finalRemainingBalance = Math.max(0, principalRemaining - defaultEmi - additionalPrincipal + newLoan)
+  const calculatedMonthlyInterest = Math.round((finalRemainingBalance * loan.interest_rate) / 100)
 
   const handleAdditionalPrincipalChange = (value: string) => {
     setAdditionalPrincipalPayment(value)
@@ -158,7 +157,7 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
 
       const monthlyInterest = Math.round((currentPrincipal * (loanData.interest_rate || loan.interest_rate)) / 100)
 
-      const newRemainingBalance = Math.max(0, currentPrincipal - additionalPrincipal)
+      const newRemainingBalance = Math.max(0, currentPrincipal - emi - additionalPrincipal + newLoan)
 
       const now = new Date()
       const paymentMonth = now.getMonth() + 1
@@ -370,9 +369,7 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
                 className="h-7 md:h-9 text-xs md:text-sm"
                 disabled={hasPaymentThisMonth}
               />
-              <p className="text-[9px] md:text-xs text-muted-foreground">
-              Minimum ₹10,000
-              </p>
+              <p className="text-[9px] md:text-xs text-muted-foreground">Minimum ₹10,000</p>
             </div>
           </div>
 
