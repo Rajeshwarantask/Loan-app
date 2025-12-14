@@ -25,6 +25,17 @@ export default async function AdminLoansPage() {
     .select("*")
     .order("payment_date", { ascending: false })
 
+  const { data: additionalLoans } = await supabase
+    .from("additional_loan")
+    .select("*")
+    .order("created_at", { ascending: false })
+
+  const additionalLoansWithNames =
+    additionalLoans?.map((loan) => ({
+      ...loan,
+      member_name: profiles?.find((p) => p.id === loan.user_id)?.full_name,
+    })) || []
+
   const { data: users } = await supabase.from("profiles").select("id, full_name, email, member_id").order("full_name")
 
   return (
@@ -32,7 +43,12 @@ export default async function AdminLoansPage() {
       <Sidebar role={profile.role} userName={profile.full_name} />
 
       <main className="flex-1 overflow-y-auto pb-20 md:pb-0">
-        <LoanManagementClient loans={loansWithProfiles || []} payments={payments || []} users={users || []} />
+        <LoanManagementClient
+          loans={loansWithProfiles || []}
+          payments={payments || []}
+          users={users || []}
+          additionalLoans={additionalLoansWithNames || []}
+        />
       </main>
 
       <MobileNav role={profile.role} />

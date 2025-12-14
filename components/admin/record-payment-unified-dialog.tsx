@@ -43,37 +43,20 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
   const [checkingPayment, setCheckingPayment] = useState(false)
 
   const principalRemaining = loan.remaining_balance ?? loan.loan_amount
-  const outstandingInterest = 0
-  const totalLoan = principalRemaining
-
   const defaultEmi = loan.monthly_emi || 5000
 
   const [emiPayment, setEmiPayment] = useState(defaultEmi.toString())
   const [additionalPrincipalPayment, setAdditionalPrincipalPayment] = useState("0")
   const [newLoanTaken, setNewLoanTaken] = useState("0")
+  const [interestPayment, setInterestPayment] = useState("")
 
-  const calculateDynamicInterest = () => {
-    const additionalPrincipal = Number(additionalPrincipalPayment) || 0
-
-    const principalAfterPayment = Math.max(0, principalRemaining - additionalPrincipal)
-    const monthlyInterest = Math.round((principalAfterPayment * loan.interest_rate) / 100)
-
-    return monthlyInterest
-  }
-
-  const calculatedMonthlyInterest = calculateDynamicInterest()
-  const [interestPayment, setInterestPayment] = useState(calculatedMonthlyInterest.toString())
-
-  const handleEmiChange = (value: string) => {
-    setEmiPayment(value)
-  }
+  const additionalPrincipal = Number(additionalPrincipalPayment) || 0
+  const balanceAfterPayment = Math.max(0, principalRemaining - additionalPrincipal)
+  const calculatedMonthlyInterest = Math.round((balanceAfterPayment * loan.interest_rate) / 100)
 
   const handleAdditionalPrincipalChange = (value: string) => {
     setAdditionalPrincipalPayment(value)
-    const additionalPrincipal = Number(value) || 0
-    const principalAfterPayment = Math.max(0, principalRemaining - additionalPrincipal)
-    const monthlyInterest = Math.round((principalAfterPayment * loan.interest_rate) / 100)
-    setInterestPayment(monthlyInterest.toString())
+    setInterestPayment(calculatedMonthlyInterest.toString())
   }
 
   const router = useRouter()
@@ -121,7 +104,7 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
     }
 
     const emi = Number(emiPayment)
-    const interest = Number(interestPayment)
+    const interest = interestPayment ? Number(interestPayment) : calculatedMonthlyInterest
     const additionalPrincipal = Number(additionalPrincipalPayment)
     const newLoan = Number(newLoanTaken)
 
@@ -170,7 +153,7 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
 
       const monthlyInterest = Math.round((currentPrincipal * (loanData.interest_rate || loan.interest_rate)) / 100)
 
-      const newPrincipal = Math.max(0, currentPrincipal - additionalPrincipal)
+      const newRemainingBalance = Math.max(0, currentPrincipal - additionalPrincipal)
 
       const now = new Date()
       const paymentMonth = now.getMonth() + 1
@@ -188,11 +171,11 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
         amount: totalAmount,
         monthly_emi: emi,
         additional_principal: additionalPrincipal,
-        remaining_balance: newPrincipal,
+        remaining_balance: newRemainingBalance,
         period_month: paymentMonth,
         period_year: paymentYear,
         period_key: `${paymentYear}-${String(paymentMonth).padStart(2, "0")}`,
-        status: "paid", // Changed status from "completed" to "paid" to match CHECK constraint
+        status: "paid",
       })
 
       if (paymentError) {
@@ -200,13 +183,13 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
         throw new Error(paymentError.message || "Failed to record payment")
       }
 
-      const shouldComplete = newPrincipal <= 0
-      const newStatus = shouldComplete ? "paid" : loanData.status === "approved" ? "active" : loanData.status // Changed "completed" to "paid" to match loans table CHECK constraint
+      const shouldComplete = newRemainingBalance <= 0
+      const newStatus = shouldComplete ? "paid" : loanData.status === "approved" ? "active" : loanData.status
 
       const { error: updateError } = await supabase
         .from("loans")
         .update({
-          remaining_balance: newPrincipal,
+          remaining_balance: newRemainingBalance,
           status: newStatus,
           monthly_emi: emi,
         })
@@ -218,21 +201,33 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
       }
 
       if (newLoan > 0) {
-        const { error: newLoanError } = await supabase.from("loans").insert({
+        const { error: newLoanError } = await supabase.from("additional_loan").insert({
           user_id: loan.user_id,
           member_id: loan.member_id || loan.profiles?.member_id,
-          loan_amount: newLoan,
-          interest_rate: loan.interest_rate,
-          remaining_balance: newLoan,
-          status: "active",
-          monthly_emi: emi,
-          purpose: "New loan taken during payment",
-          approved_by: user.id,
+          loan_id: loan.id,
+          additional_loan_amount: newLoan,
+          period_year: paymentYear,
+          period_month: paymentMonth,
+          period_key: `${paymentYear}-${String(paymentMonth).padStart(2, "0")}`,
         })
 
         if (newLoanError) {
-          console.error("[v0] New loan error:", newLoanError)
-          throw new Error("Payment recorded but failed to create new loan")
+          console.error("[v0] Additional loan error:", newLoanError)
+          throw new Error("Payment recorded but failed to create additional loan")
+        }
+
+        const finalBalance = newRemainingBalance + newLoan
+        const { error: updateLoanError } = await supabase
+          .from("loans")
+          .update({
+            loan_amount: loanData.loan_amount + newLoan,
+            remaining_balance: finalBalance,
+          })
+          .eq("id", loan.id)
+
+        if (updateLoanError) {
+          console.error("[v0] Loan update error:", updateLoanError)
+          throw new Error("Additional loan created but failed to update total loan amount")
         }
       }
 
@@ -277,11 +272,11 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
         <div className="space-y-3 md:space-y-4 py-2 md:py-4">
           <div className="grid grid-cols-3 gap-1.5 md:gap-3">
             <div className="p-2 md:p-3 bg-blue-50 rounded-lg border border-blue-200">
-              <div className="text-[9px] md:text-xs text-muted-foreground mb-1">Total Outstanding</div>
-              <div className="text-[10px] md:text-sm font-bold text-blue-600">{formatCurrency(totalLoan)}</div>
+              <div className="text-[9px] md:text-xs text-muted-foreground mb-1">Total Loan Taken</div>
+              <div className="text-[10px] md:text-sm font-bold text-blue-600">{formatCurrency(loan.loan_amount)}</div>
             </div>
             <div className="p-2 md:p-3 bg-green-50 rounded-lg border border-green-200">
-              <div className="text-[9px] md:text-xs text-muted-foreground mb-1">Principal</div>
+              <div className="text-[9px] md:text-xs text-muted-foreground mb-1">Remaining Principal</div>
               <div className="text-[10px] md:text-sm font-bold text-green-600">
                 {formatCurrency(principalRemaining)}
               </div>
@@ -289,7 +284,7 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
             <div className="p-2 md:p-3 bg-orange-50 rounded-lg border border-orange-200">
               <div className="text-[9px] md:text-xs text-muted-foreground mb-1">Interest Due</div>
               <div className="text-[10px] md:text-sm font-bold text-orange-600">
-                {formatCurrency(outstandingInterest)}
+                {formatCurrency(calculatedMonthlyInterest)}
               </div>
             </div>
           </div>
@@ -306,10 +301,11 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
                 min="1"
                 placeholder="₹5000"
                 value={emiPayment}
-                onChange={(e) => handleEmiChange(e.target.value)}
+                onChange={(e) => setEmiPayment(e.target.value)}
                 className="h-7 md:h-9 text-xs md:text-sm border-red-300 focus:border-red-500"
                 required
                 disabled={hasPaymentThisMonth}
+                readOnly={true}
               />
               <p className="text-[9px] md:text-xs text-muted-foreground">Monthly EMI</p>
             </div>
@@ -323,14 +319,14 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
                 type="number"
                 step="1"
                 min="0"
-                placeholder="₹0"
-                value={interestPayment}
+                placeholder={calculatedMonthlyInterest.toString()}
+                value={interestPayment || calculatedMonthlyInterest}
                 onChange={(e) => setInterestPayment(e.target.value)}
-                className="h-7 md:h-9 text-xs md:text-sm"
+                className="h-7 md:h-9 text-xs md:text-sm bg-white"
                 disabled={hasPaymentThisMonth}
               />
               <p className="text-[9px] md:text-xs text-muted-foreground">
-                Calculated: ₹{calculatedMonthlyInterest.toLocaleString()}
+                Auto-calculated: {formatCurrency(calculatedMonthlyInterest)}
               </p>
             </div>
           </div>

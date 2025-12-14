@@ -10,6 +10,7 @@ import { AdminLoansTable } from "./admin-loans-table"
 import { LoanHistoryTable } from "./loan-history-table"
 import { AddLoanDialog } from "./add-loan-dialog"
 import { UserLoanSummaryTable } from "./user-loan-summary-table"
+import { AdditionalLoanHistory } from "./additional-loan-history"
 
 interface Profile {
   id: string
@@ -42,13 +43,27 @@ interface LoanPayment {
   payment_date: string | null
 }
 
+interface AdditionalLoan {
+  id: string
+  user_id: string
+  member_id: string
+  loan_id: string
+  additional_loan_amount: number
+  period_year: number
+  period_month: number
+  period_key: string
+  created_at: string
+  member_name?: string
+}
+
 interface LoanManagementClientProps {
   loans: Loan[]
   payments: LoanPayment[]
   users: Profile[]
+  additionalLoans: AdditionalLoan[]
 }
 
-export function LoanManagementClient({ loans, payments, users }: LoanManagementClientProps) {
+export function LoanManagementClient({ loans, payments, users, additionalLoans }: LoanManagementClientProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [selectedUser, setSelectedUser] = useState<string>("all")
@@ -83,6 +98,11 @@ export function LoanManagementClient({ loans, payments, users }: LoanManagementC
     return payments.filter((p) => p.user_id === selectedUser)
   }, [payments, selectedUser])
 
+  const filteredAdditionalLoans = useMemo(() => {
+    if (selectedUser === "all") return additionalLoans
+    return additionalLoans.filter((al) => al.user_id === selectedUser)
+  }, [additionalLoans, selectedUser])
+
   return (
     <div className="container max-w-7xl py-2 md:py-6 px-2 md:px-6 space-y-2 md:space-y-6">
       {/* Header */}
@@ -97,10 +117,11 @@ export function LoanManagementClient({ loans, payments, users }: LoanManagementC
 
       {/* Main Content */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-2 md:space-y-4">
-        <TabsList className="w-full grid grid-cols-3 mx-auto md:w-fit">
+        <TabsList className="w-full grid grid-cols-4 mx-auto md:w-fit">
           <TabsTrigger value="active-loans">Active Loans</TabsTrigger>
           <TabsTrigger value="completed-loans">User Summary</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
+          <TabsTrigger value="additional">Top-Ups</TabsTrigger>
         </TabsList>
 
         <TabsContent value="active-loans" className="space-y-2 md:space-y-4">
@@ -135,7 +156,9 @@ export function LoanManagementClient({ loans, payments, users }: LoanManagementC
                   </SelectContent>
                 </Select>
 
-                <AddLoanDialog users={users} />
+                <div className="flex gap-2">
+                  <AddLoanDialog users={users} />
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -236,6 +259,45 @@ export function LoanManagementClient({ loans, payments, users }: LoanManagementC
             </CardHeader>
             <CardContent className="px-2 md:px-6">
               <LoanHistoryTable payments={filteredPayments} loans={loans} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Additional Loans / Top-Ups Tab */}
+        <TabsContent value="additional" className="space-y-2 md:space-y-4">
+          <Card>
+            <CardHeader className="px-3 md:px-6 py-3 md:py-6">
+              <CardTitle>Filter by Member</CardTitle>
+            </CardHeader>
+            <CardContent className="px-3 md:px-6">
+              <Select value={selectedUser} onValueChange={setSelectedUser}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a member" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Members</SelectItem>
+                  {users.map((user) => (
+                    <SelectItem key={user.id} value={user.id}>
+                      {user.member_id ? `${user.member_id} - ` : ""}
+                      {user.full_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="px-3 md:px-6 py-3 md:py-6">
+              <CardTitle>Top-Up Loan History</CardTitle>
+              <CardDescription>
+                {selectedUser === "all"
+                  ? `All top-up records (${filteredAdditionalLoans.length} total)`
+                  : `Top-up history for ${users.find((u) => u.id === selectedUser)?.full_name || "selected member"}`}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="px-2 md:px-6">
+              <AdditionalLoanHistory additionalLoans={filteredAdditionalLoans} />
             </CardContent>
           </Card>
         </TabsContent>

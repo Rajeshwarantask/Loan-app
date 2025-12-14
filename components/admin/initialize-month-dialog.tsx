@@ -80,9 +80,8 @@ export function InitializeMonthDialog({ members }: InitializeMonthDialogProps) {
         throw new Error("User not authenticated")
       }
 
-      // Call the database function with updated parameters
       const { data, error: rpcError } = await supabase.rpc("initialize_new_month", {
-        p_month_year: monthYear,
+        p_period_key: monthYear,
         p_created_by: user.id,
       })
 

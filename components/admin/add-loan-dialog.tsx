@@ -64,9 +64,59 @@ export function AddLoanDialog({ users }: AddLoanDialogProps) {
         data: { user },
       } = await supabase.auth.getUser()
 
-      const { data: loanData, error: loanError } = await supabase
+      const { data: existingLoans, error: checkError } = await supabase
         .from("loans")
-        .insert({
+        .select("id, loan_amount, member_id")
+        .eq("user_id", userId)
+        .eq("status", "active")
+        .single()
+
+      if (checkError && checkError.code !== "PGRST116") {
+        throw checkError
+      }
+
+      if (existingLoans) {
+        const { data: currentLoan, error: fetchError } = await supabase
+          .from("loans")
+          .select("remaining_balance, loan_amount")
+          .eq("id", existingLoans.id)
+          .single()
+
+        if (fetchError) throw fetchError
+
+        const currentBalance = currentLoan.remaining_balance ?? currentLoan.loan_amount
+
+        const today = new Date()
+        const { error: additionalError } = await supabase.from("additional_loan").insert({
+          user_id: userId,
+          member_id: existingLoans.member_id,
+          loan_id: existingLoans.id,
+          additional_loan_amount: principal,
+          period_year: today.getFullYear(),
+          period_month: today.getMonth() + 1,
+          period_key: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`,
+        })
+
+        if (additionalError) {
+          console.error("[v0] Additional loan creation error:", additionalError)
+          throw additionalError
+        }
+
+        const newTotalAmount = currentBalance + principal
+        const { error: updateError } = await supabase
+          .from("loans")
+          .update({
+            loan_amount: newTotalAmount,
+            remaining_balance: newTotalAmount,
+          })
+          .eq("id", existingLoans.id)
+
+        if (updateError) {
+          console.error("[v0] Loan update error:", updateError)
+          throw updateError
+        }
+      } else {
+        const { error: loanError } = await supabase.from("loans").insert({
           user_id: userId,
           member_id: selectedUser.member_id,
           loan_amount: principal,
@@ -78,11 +128,11 @@ export function AddLoanDialog({ users }: AddLoanDialogProps) {
           status: "active",
           payment_date: new Date().toISOString(),
         })
-        .select()
 
-      if (loanError) {
-        console.error("[v0] Loan creation error:", loanError)
-        throw loanError
+        if (loanError) {
+          console.error("[v0] Loan creation error:", loanError)
+          throw loanError
+        }
       }
 
       setOpen(false)
@@ -107,7 +157,7 @@ export function AddLoanDialog({ users }: AddLoanDialogProps) {
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>Add New Loan</DialogTitle>
-            <DialogDescription>Create a new loan for a user</DialogDescription>
+            <DialogDescription>Create a new loan or top-up an existing one</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="flex gap-2">
@@ -157,7 +207,7 @@ export function AddLoanDialog({ users }: AddLoanDialogProps) {
               Cancel
             </Button>
             <Button type="submit" disabled={isLoading}>
-              {isLoading ? "Creating..." : "Create Loan"}
+              {isLoading ? "Processing..." : "Add Loan"}
             </Button>
           </DialogFooter>
         </form>

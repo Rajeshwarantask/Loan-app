@@ -1,6 +1,7 @@
 -- Drop existing function if it exists
 DROP FUNCTION IF EXISTS initialize_new_month(TEXT, UUID);
 
+-- Adding SECURITY DEFINER to allow function to bypass RLS policies
 -- Create the initialize_new_month function with corrected logic
 CREATE OR REPLACE FUNCTION initialize_new_month(
   p_month_year TEXT,  -- Format: 'YYYY-MM' (e.g., '2025-12')
@@ -9,7 +10,9 @@ CREATE OR REPLACE FUNCTION initialize_new_month(
 RETURNS TABLE(
   records_created INTEGER,
   message TEXT
-) AS $$
+) 
+SECURITY DEFINER
+AS $$
 DECLARE
   v_period_year INTEGER;
   v_period_month INTEGER;
