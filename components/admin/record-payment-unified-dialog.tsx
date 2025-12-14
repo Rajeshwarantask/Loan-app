@@ -47,16 +47,21 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
 
   const [emiPayment, setEmiPayment] = useState(defaultEmi.toString())
   const [additionalPrincipalPayment, setAdditionalPrincipalPayment] = useState("0")
-  const [newLoanTaken, setNewLoanTaken] = useState("0")
+  const [newLoanAmount, setNewLoanAmount] = useState("0")
   const [interestPayment, setInterestPayment] = useState("")
 
   const additionalPrincipal = Number(additionalPrincipalPayment) || 0
-  const balanceAfterPayment = Math.max(0, principalRemaining - additionalPrincipal)
+  const newLoan = Number(newLoanAmount) || 0
+  const principalWithNewLoan = principalRemaining + newLoan - additionalPrincipal
+  const balanceAfterPayment = Math.max(0, principalWithNewLoan)
   const calculatedMonthlyInterest = Math.round((balanceAfterPayment * loan.interest_rate) / 100)
 
   const handleAdditionalPrincipalChange = (value: string) => {
     setAdditionalPrincipalPayment(value)
-    setInterestPayment(calculatedMonthlyInterest.toString())
+  }
+
+  const handleNewLoanChange = (value: string) => {
+    setNewLoanAmount(value)
   }
 
   const router = useRouter()
@@ -106,7 +111,7 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
     const emi = Number(emiPayment)
     const interest = interestPayment ? Number(interestPayment) : calculatedMonthlyInterest
     const additionalPrincipal = Number(additionalPrincipalPayment)
-    const newLoan = Number(newLoanTaken)
+    const newLoan = Number(newLoanAmount)
 
     if (emi <= 0) {
       setError("Monthly EMI is mandatory and must be greater than 0")
@@ -360,12 +365,14 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
                 step="100"
                 min="0"
                 placeholder="₹0"
-                value={newLoanTaken}
-                onChange={(e) => setNewLoanTaken(e.target.value)}
+                value={newLoanAmount}
+                onChange={(e) => handleNewLoanChange(e.target.value)}
                 className="h-7 md:h-9 text-xs md:text-sm"
                 disabled={hasPaymentThisMonth}
               />
-              <p className="text-[9px] md:text-xs text-muted-foreground">Minimum ₹10,000</p>
+              <p className="text-[9px] md:text-xs text-muted-foreground">
+              Minimum ₹10,000
+              </p>
             </div>
           </div>
 
