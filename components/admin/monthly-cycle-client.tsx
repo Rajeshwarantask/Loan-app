@@ -8,7 +8,6 @@ import { Calendar, Check } from "lucide-react"
 import { InitializeMonthDialog } from "./initialize-month-dialog"
 import { MonthlyRecordTable } from "./monthly-record-table"
 import { MonthlyReportDialog } from "./monthly-report-dialog"
-import { DeleteMonthDialog } from "./delete-month-dialog"
 
 interface Profile {
   id: string
@@ -121,7 +120,6 @@ export function MonthlyCycleClient({ monthlyRecords, members }: MonthlyCycleClie
           {selectedMonth && currentMonthRecords.length > 0 && (
             <>
               <MonthlyReportDialog monthYear={selectedMonth} records={currentMonthRecords} />
-              <DeleteMonthDialog monthYear={selectedMonth} recordCount={currentMonthRecords.length} />
             </>
           )}
         </CardContent>
