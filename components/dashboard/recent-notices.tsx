@@ -11,10 +11,10 @@ export async function RecentNotices() {
     .from("notices")
     .select("*")
     .order("created_at", { ascending: false })
-    .limit(5)
+    .limit(3)
 
   return (
-    <Card>
+    <Card className="h-full">
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Recent Notices</CardTitle>
         <Link href="/notices" className="text-sm text-primary hover:underline">

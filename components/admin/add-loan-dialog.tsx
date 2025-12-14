@@ -41,7 +41,6 @@ export function AddLoanDialog({ users }: AddLoanDialogProps) {
     const amount = formData.get("amount") as string
     const interestRate = formData.get("interestRate") as string
     const purpose = formData.get("purpose") as string
-    const monthlySubscription = formData.get("monthlySubscription") as string
 
     const principal = Number.parseFloat(amount)
     if (principal < 10000) {
@@ -124,7 +123,6 @@ export function AddLoanDialog({ users }: AddLoanDialogProps) {
           remaining_balance: principal,
           purpose: purpose || null,
           approved_by: user?.id || null,
-          monthly_subscription: Number.parseFloat(monthlySubscription) || 2100,
           status: "active",
           payment_date: new Date().toISOString(),
         })
@@ -160,33 +158,20 @@ export function AddLoanDialog({ users }: AddLoanDialogProps) {
             <DialogDescription>Create a new loan or top-up an existing one</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="flex gap-2">
-              <div className="flex-1 space-y-2">
-                <Label htmlFor="userId">User</Label>
-                <Select name="userId" required onValueChange={setSelectedUserId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select user" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {users.map((user) => (
-                      <SelectItem key={user.id} value={user.id}>
-                        {user.member_id} - {user.full_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="w-24 space-y-2">
-                <Label htmlFor="monthlySubscription">Monthly Sub</Label>
-                <Input
-                  id="monthlySubscription"
-                  name="monthlySubscription"
-                  type="number"
-                  step="100"
-                  defaultValue="2100"
-                  required
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="userId">User</Label>
+              <Select name="userId" required onValueChange={setSelectedUserId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select user" />
+                </SelectTrigger>
+                <SelectContent>
+                  {users.map((user) => (
+                    <SelectItem key={user.id} value={user.id}>
+                      {user.member_id} - {user.full_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="amount">Loan Amount (₹)</Label>

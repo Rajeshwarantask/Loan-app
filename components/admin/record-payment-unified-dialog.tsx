@@ -41,6 +41,7 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
   const [error, setError] = useState<string | null>(null)
   const [hasPaymentThisMonth, setHasPaymentThisMonth] = useState(false)
   const [checkingPayment, setCheckingPayment] = useState(false)
+  const [monthlySubscription, setMonthlySubscription] = useState("2100") // added monthly subscription state
 
   const principalRemaining = loan.remaining_balance ?? loan.loan_amount
   const defaultEmi = loan.monthly_emi || 5000
@@ -61,6 +62,11 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
 
   const handleNewLoanChange = (value: string) => {
     setNewLoanAmount(value)
+  }
+
+  const handleMonthlySubscriptionChange = (value: string) => {
+    // added handler for monthly subscription
+    setMonthlySubscription(value)
   }
 
   const router = useRouter()
@@ -111,13 +117,14 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
     const interest = interestPayment ? Number(interestPayment) : calculatedMonthlyInterest
     const additionalPrincipal = Number(additionalPrincipalPayment)
     const newLoan = Number(newLoanAmount)
+    const subscription = Number(monthlySubscription) || 2100 // added monthly subscription to insert
 
     if (emi <= 0) {
       setError("Monthly EMI is mandatory and must be greater than 0")
       return
     }
 
-    if (interest < 0 || additionalPrincipal < 0 || newLoan < 0 || emi < 0) {
+    if (interest < 0 || additionalPrincipal < 0 || newLoan < 0 || emi < 0 || subscription < 0) {
       setError("Please enter valid amounts (no negative values)")
       return
     }
@@ -163,7 +170,7 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
       const paymentMonth = now.getMonth() + 1
       const paymentYear = now.getFullYear()
 
-      const totalAmount = interest + emi + additionalPrincipal
+      const totalAmount = interest + emi + additionalPrincipal + subscription
 
       const { error: paymentError } = await supabase.from("loan_payments").insert({
         loan_id: loan.id,
@@ -180,6 +187,7 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
         period_year: paymentYear,
         period_key: `${paymentYear}-${String(paymentMonth).padStart(2, "0")}`,
         status: "paid",
+        monthly_subscription: subscription, // added monthly subscription to insert
       })
 
       if (paymentError) {
@@ -371,6 +379,28 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
               />
               <p className="text-[9px] md:text-xs text-muted-foreground">Minimum ₹10,000</p>
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 md:gap-3">
+            <div className="space-y-1">
+              <Label htmlFor="monthlySubscription" className="text-[10px] md:text-xs">
+                Monthly Subscription
+              </Label>
+              <Input
+                id="monthlySubscription"
+                type="number"
+                step="100"
+                min="0"
+                placeholder="₹2100"
+                value={monthlySubscription}
+                onChange={(e) => handleMonthlySubscriptionChange(e.target.value)}
+                className="h-7 md:h-9 text-xs md:text-sm"
+                disabled={hasPaymentThisMonth}
+              />
+              <p className="text-[9px] md:text-xs text-muted-foreground">Monthly contribution amount</p>
+            </div>
+
+            <div></div>
           </div>
 
           {error && (
