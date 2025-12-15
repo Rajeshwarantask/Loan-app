@@ -43,7 +43,11 @@ export function MonthlyRecordTable({ records, monthYear }: MonthlyRecordTablePro
     if (amount === null || amount === undefined) {
       return "₹0"
     }
-    return `₹${amount.toLocaleString()}`
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      maximumFractionDigits: 0,
+    }).format(amount)
   }
 
   const sortedRecords = [...records].sort((a, b) => {

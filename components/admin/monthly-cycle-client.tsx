@@ -8,6 +8,7 @@ import { Calendar, Check } from "lucide-react"
 import { InitializeMonthDialog } from "./initialize-month-dialog"
 import { MonthlyRecordTable } from "./monthly-record-table"
 import { MonthlyReportDialog } from "./monthly-report-dialog"
+import { formatCurrency } from "@/lib/utils/loan-calculator"
 
 interface Profile {
   id: string
@@ -168,14 +169,14 @@ export function MonthlyCycleClient({ monthlyRecords, members }: MonthlyCycleClie
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Total Monthly Income</CardDescription>
-              <CardTitle className="text-2xl">₹{monthStats.totalIncome.toLocaleString()}</CardTitle>
+              <CardTitle className="text-2xl">{formatCurrency(monthStats.totalIncome)}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-xs text-muted-foreground space-y-1">
-                <div>Subscription: ₹{monthStats.totalSubscription.toLocaleString()}</div>
-                <div>Interest: ₹{monthStats.totalInterest.toLocaleString()}</div>
-                <div>Principal: ₹{monthStats.totalPrincipal.toLocaleString()}</div>
-                <div>Penalty: ₹{monthStats.totalPenalty.toLocaleString()}</div>
+                <div>Subscription: {formatCurrency(monthStats.totalSubscription)}</div>
+                <div>Interest: {formatCurrency(monthStats.totalInterest)}</div>
+                <div>Principal: {formatCurrency(monthStats.totalPrincipal)}</div>
+                <div>Penalty: {formatCurrency(monthStats.totalPenalty)}</div>
               </div>
             </CardContent>
           </Card>
@@ -183,14 +184,14 @@ export function MonthlyCycleClient({ monthlyRecords, members }: MonthlyCycleClie
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>New Loans Issued</CardDescription>
-              <CardTitle className="text-2xl">₹{monthStats.totalNewLoans.toLocaleString()}</CardTitle>
+              <CardTitle className="text-2xl">{formatCurrency(monthStats.totalNewLoans)}</CardTitle>
             </CardHeader>
           </Card>
 
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Total Outstanding</CardDescription>
-              <CardTitle className="text-2xl">₹{monthStats.totalOutstanding.toLocaleString()}</CardTitle>
+              <CardTitle className="text-2xl">{formatCurrency(monthStats.totalOutstanding)}</CardTitle>
             </CardHeader>
           </Card>
 

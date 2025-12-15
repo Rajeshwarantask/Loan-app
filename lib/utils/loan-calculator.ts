@@ -57,11 +57,17 @@ export function calculateLoan(amount: number, interestRate: number, durationMont
 }
 
 export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-IN", {
+  if (amount === 0) return "₹0"
+
+  // Use Indian locale for proper formatting
+  const formatted = new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
     maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
   }).format(amount)
+
+  return formatted
 }
 
 export function getCurrentMonthYear(): string {
