@@ -6,8 +6,6 @@ import { DashboardStats } from "@/components/dashboard/dashboard-stats"
 import { LoanOverview } from "@/components/dashboard/loan-overview"
 import { RecentNotices } from "@/components/dashboard/recent-notices"
 
-export const revalidate = 0 // Disable caching for dashboard page - financial data must always be fresh
-
 export default async function DashboardPage() {
   const supabase = await createClient()
 
