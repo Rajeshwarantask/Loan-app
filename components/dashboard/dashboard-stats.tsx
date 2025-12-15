@@ -13,6 +13,7 @@ import {
 } from "lucide-react"
 import { formatCurrency } from "@/lib/utils/loan-calculator"
 import type { UserRole } from "@/lib/types"
+import { revalidateTag } from "next/cache"
 
 interface DashboardStatsProps {
   userId: string
@@ -20,6 +21,9 @@ interface DashboardStatsProps {
 }
 
 export async function DashboardStats({ userId, role }: DashboardStatsProps) {
+  revalidateTag("financial-data")
+  revalidateTag(`user-financial-${userId}`)
+
   const supabase = await createClient()
 
   if (role === "admin") {
