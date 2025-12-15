@@ -101,7 +101,7 @@ export function LoanHistoryTable({ payments, loans }: LoanHistoryTableProps) {
     try {
       const { data: loanData, error: loanFetchError } = await supabase
         .from("loans")
-        .select("remaining_balance")
+        .select("remaining_balance, status")
         .eq("id", payment.loan_id)
         .single()
 
@@ -143,9 +143,15 @@ export function LoanHistoryTable({ payments, loans }: LoanHistoryTableProps) {
         if (deleteAdditionalLoanError) throw deleteAdditionalLoanError
       }
 
+      // If the restored balance is > 0, the loan should be active
+      const shouldBeActive = finalRestoredBalance > 0
+
       const { error: updateLoanError } = await supabase
         .from("loans")
-        .update({ remaining_balance: finalRestoredBalance })
+        .update({
+          remaining_balance: finalRestoredBalance,
+          status: shouldBeActive ? "active" : loanData.status,
+        })
         .eq("id", payment.loan_id)
 
       if (updateLoanError) throw updateLoanError
@@ -220,7 +226,7 @@ export function LoanHistoryTable({ payments, loans }: LoanHistoryTableProps) {
                             <TableHead className="px-2 md:px-4">Month</TableHead>
                             <TableHead className="px-2 md:px-4">Principal</TableHead>
                             <TableHead className="px-2 md:px-4">Interest</TableHead>
-                            <TableHead className="px-2 md:px-4 hidden md:table-cell">Total</TableHead>
+                            <TableHead className="font-semibold px-2 md:px-4 hidden md:table-cell">Total</TableHead>
                             <TableHead className="px-2 md:px-4 hidden lg:table-cell">Balance</TableHead>
                             <TableHead className="px-2 md:px-4 hidden md:table-cell">Status</TableHead>
                             <TableHead className="px-2 md:px-4 hidden lg:table-cell">Date</TableHead>

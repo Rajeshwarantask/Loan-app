@@ -31,7 +31,7 @@ export function CashBillDownloadClient({ users }: CashBillDownloadClientProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           selectedUser: selectedUser === "all" ? null : selectedUser,
-          month: new Date().toISOString().slice(0, 7),
+          monthYear: new Date().toISOString().slice(0, 7),
         }),
       })
 

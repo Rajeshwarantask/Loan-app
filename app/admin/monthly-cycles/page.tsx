@@ -4,6 +4,9 @@ import { Sidebar } from "@/components/layout/sidebar"
 import { MobileNav } from "@/components/layout/mobile-nav"
 import { MonthlyCycleClient } from "@/components/admin/monthly-cycle-client"
 
+export const revalidate = 0
+export const dynamic = "force-dynamic"
+
 export default async function MonthlyCyclesPage() {
   const supabase = await createClient()
 

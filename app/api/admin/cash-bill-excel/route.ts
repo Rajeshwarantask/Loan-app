@@ -33,31 +33,37 @@ export async function POST(request: NextRequest) {
 
     const supabase = await createClient()
 
-    // First get monthly records
-    let monthlyRecordsQuery = supabase.from("monthly_loan_records").select("*").order("user_id")
-
-    if (monthYear) {
-      monthlyRecordsQuery = monthlyRecordsQuery.eq("month_year", monthYear)
-    }
+    let loansQuery = supabase
+      .from("loans")
+      .select("user_id, loan_amount, remaining_balance, monthly_emi, interest_rate, status")
+      .eq("status", "active")
 
     if (selectedUser) {
-      monthlyRecordsQuery = monthlyRecordsQuery.eq("user_id", selectedUser)
+      console.log("[v0] Filtering by selectedUser:", selectedUser)
+      loansQuery = loansQuery.eq("user_id", selectedUser)
     }
 
-    const { data: monthlyRecords, error: recordsError } = await monthlyRecordsQuery
-    if (recordsError) {
-      console.error("[v0] Error fetching monthly records:", recordsError.message)
+    const { data: loans, error: loansError } = await loansQuery
+
+    console.log("[v0] Active loans found:", loans?.length || 0)
+
+    if (loansError) {
+      console.error("[v0] Error fetching loans:", loansError.message)
+      return NextResponse.json({ error: "Failed to fetch loan data", details: loansError.message }, { status: 500 })
+    }
+
+    if (!loans || loans.length === 0) {
       return NextResponse.json(
-        { error: "Failed to fetch cash bill data", details: recordsError.message },
-        { status: 500 },
+        {
+          error:
+            "No active loans found for the selected criteria. Cash bill can only be generated for users with active loans.",
+        },
+        { status: 404 },
       )
     }
-    if (!monthlyRecords || monthlyRecords.length === 0) {
-      return NextResponse.json({ error: "No cash bill data found" }, { status: 404 })
-    }
 
-    // Get unique user IDs to fetch profile data
-    const userIds = [...new Set(monthlyRecords.map((r) => r.user_id))]
+    // Get unique user IDs to fetch profile and payment data
+    const userIds = [...new Set(loans.map((r) => r.user_id))]
 
     // Fetch profiles separately
     const { data: profiles, error: profilesError } = await supabase
@@ -73,28 +79,42 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create a map for easy lookup
+    const currentPeriodKey = monthYear || new Date().toISOString().slice(0, 7)
+    const { data: payments, error: paymentsError } = await supabase
+      .from("loan_payments")
+      .select("user_id, monthly_subscription")
+      .in("user_id", userIds)
+      .eq("period_key", currentPeriodKey)
+
+    if (paymentsError) {
+      console.error("[v0] Error fetching payments:", paymentsError.message)
+    }
+
+    // Create maps for easy lookup
     const profileMap = new Map(profiles?.map((p) => [p.id, p]) || [])
+    const paymentMap = new Map(payments?.map((p) => [p.user_id, p]) || [])
 
     // Combine the data
-    const users = monthlyRecords
-      .map((record) => {
-        const profile = profileMap.get(record.user_id)
+    const users = loans
+      .map((loan) => {
+        const profile = profileMap.get(loan.user_id)
+        const payment = paymentMap.get(loan.user_id)
+
         return {
-          user_id: record.user_id,
+          user_id: loan.user_id,
           full_name: profile?.full_name || "",
           member_id: profile?.member_id || "",
           name: profile?.full_name || "",
           voucher_no: profile?.member_id || "",
-          monthly_installment: record.monthly_subscription || 2100,
-          total_loan_balance: record.total_loan_outstanding || 0,
-          monthly_emi: record.additional_principal || 0,
-          fine: record.penalty || 0,
+          monthly_installment: payment?.monthly_subscription || 2100,
+          total_loan_balance: loan.remaining_balance || 0,
+          monthly_emi: loan.monthly_emi || 0,
+          fine: 0, // Can be added later if needed
           // Additional fields for compatibility
-          monthly_installment_amount: record.monthly_subscription || 2100,
-          loan_balance: record.total_loan_outstanding || 0,
-          total_loan: record.total_loan_outstanding || 0,
-          available_loan: record.available_loan_amount || 400000 - (record.total_loan_outstanding || 0),
+          monthly_installment_amount: payment?.monthly_subscription || 2100,
+          loan_balance: loan.remaining_balance || 0,
+          total_loan: loan.remaining_balance || 0,
+          available_loan: 400000 - (loan.remaining_balance || 0),
         }
       })
       .sort((a, b) => {
