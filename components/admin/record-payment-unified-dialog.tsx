@@ -228,12 +228,11 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
           throw new Error("Payment recorded but failed to create additional loan")
         }
 
-        const finalBalance = newRemainingBalance + newLoan
         const { error: updateLoanError } = await supabase
           .from("loans")
           .update({
             loan_amount: loanData.loan_amount + newLoan,
-            remaining_balance: finalBalance,
+            remaining_balance: newRemainingBalance, // Already includes the new loan from line 197
           })
           .eq("id", loan.id)
 

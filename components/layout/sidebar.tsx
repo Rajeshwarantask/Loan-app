@@ -13,6 +13,7 @@ import {
   MessageSquare,
   Calendar,
   Sliders,
+  RotateCcw,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { UserRole } from "@/lib/types"
@@ -43,11 +44,17 @@ export function Sidebar({ role, userName }: SidebarProps) {
     { href: "/admin/requests", label: "Loan Requests", icon: DollarSign },
     { href: "/admin/cash-bill", label: "Cash Bill", icon: FileText },
     { href: "/admin/notices", label: "Manage Notices", icon: Bell },
-    { href: "/admin/bulk-settings", label: "Bulk Settings", icon: Sliders }, // Added Bulk Settings link
+    { href: "/admin/bulk-settings", label: "Bulk Settings", icon: Sliders },
     { href: "/calculator", label: "Calculator", icon: Calculator },
   ]
 
   const links = role === "admin" ? adminLinks : userLinks
+
+  const handleHardRefresh = () => {
+    if (typeof window !== "undefined") {
+      window.location.reload(true)
+    }
+  }
 
   return (
     <aside className="hidden w-64 border-r bg-background md:block">
@@ -81,17 +88,26 @@ export function Sidebar({ role, userName }: SidebarProps) {
           })}
         </nav>
 
-        <div className="border-t p-4">
-          <Link
-            href="/settings"
-            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <Settings className="h-4 w-4" />
-            Settings
-          </Link>
-          <div className="mt-2">
-            <LogoutButton />
+        <div className="border-t p-2 space-y-1">
+          <div className="flex items-center gap-1">
+            <Link
+              href="/settings"
+              className="flex-1 flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <Settings className="h-4 w-4" />
+              <span>Settings</span>
+            </Link>
+
+            <button
+              onClick={handleHardRefresh}
+              className="flex items-center justify-center h-9 w-9 rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              title="Hard refresh - clears cache"
+            >
+              <RotateCcw className="h-4 w-4" />
+            </button>
           </div>
+
+          <LogoutButton />
         </div>
       </div>
     </aside>
