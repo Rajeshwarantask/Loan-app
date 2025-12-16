@@ -85,7 +85,17 @@ export function LoanManagementClient({ loans, payments, users, additionalLoans }
   }, [loans, searchTerm, statusFilter, selectedUser])
 
   const activeLoans = useMemo(() => {
-    return filteredLoans.filter((loan) => loan.status === "active")
+    const active = filteredLoans.filter((loan) => loan.status === "active")
+    return active.sort((a, b) => {
+      const memberA = a.profiles?.member_id || ""
+      const memberB = b.profiles?.member_id || ""
+
+      // Extract numeric part from member_id (e.g., "V1" -> 1, "V10" -> 10)
+      const numA = Number.parseInt(memberA.replace(/\D/g, ""), 10) || 0
+      const numB = Number.parseInt(memberB.replace(/\D/g, ""), 10) || 0
+
+      return numA - numB
+    })
   }, [filteredLoans])
 
   const allUserLoans = useMemo(() => {

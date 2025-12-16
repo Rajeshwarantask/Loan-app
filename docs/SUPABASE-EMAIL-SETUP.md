@@ -31,9 +31,9 @@ For each email template (Confirm signup, Reset password, Change email), you need
 ### 1. Confirm Signup Email
 
 **Subject Line:**
-\`\`\`
+```
 Confirm your email on Financial Community
-\`\`\`
+```
 
 **Body:**
 Include:
@@ -56,9 +56,9 @@ Include:
 ### 2. Reset Password Email
 
 **Subject Line:**
-\`\`\`
+```
 Reset your password on Financial Community
-\`\`\`
+```
 
 **Body:**
 Include:
@@ -83,9 +83,9 @@ Include:
 ### 3. Change Email Address
 
 **Subject Line:**
-\`\`\`
+```
 Confirm your new email on Financial Community
-\`\`\`
+```
 
 **Body:**
 Similar to sign up but mentions changing email address instead of creating account.

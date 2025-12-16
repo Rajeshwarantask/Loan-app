@@ -21,13 +21,13 @@ Supabase sends emails for:
 ### 1. Confirmation Email (Sign Up)
 
 **Subject Line:**
-\`\`\`
+```
 Welcome to Financial Community App - Confirm Your Email
-\`\`\`
+```
 
 **Email Content:**
 
-\`\`\`
+```
 Hello [User Name],
 
 Thank you for joining the Financial Community App! We're excited to have you on board.
@@ -48,18 +48,18 @@ If you have any questions or need assistance, please contact our support team at
 
 Best regards,
 Financial Community App Team
-\`\`\`
+```
 
 ### 2. Password Reset Email
 
 **Subject Line:**
-\`\`\`
+```
 Reset Your Financial Community App Password
-\`\`\`
+```
 
 **Email Content:**
 
-\`\`\`
+```
 Hello [User Name],
 
 We received a request to reset your password for your Financial Community App account.
@@ -87,7 +87,7 @@ If you experience any issues, contact support@financialcommunity.com
 
 Best regards,
 Financial Community App Team
-\`\`\`
+```
 
 ## Email Template Variables
 

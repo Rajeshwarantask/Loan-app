@@ -40,9 +40,9 @@ A comprehensive Progressive Web Application for managing community loans, paymen
 
 1. Clone the repository
 2. Install dependencies:
-   \`\`\`bash
+   ```bash
    npm install
-   \`\`\`
+   ```
 
 3. Set up environment variables (already configured in this project)
 
@@ -53,9 +53,9 @@ A comprehensive Progressive Web Application for managing community loans, paymen
    - \`003_seed_data.sql\` - Optional sample data
 
 5. Run the development server:
-   \`\`\`bash
+   ```bash
    npm run dev
-   \`\`\`
+   ```
 
 6. Open [http://localhost:3000](http://localhost:3000)
 
