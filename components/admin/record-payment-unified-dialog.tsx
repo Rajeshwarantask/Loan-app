@@ -121,8 +121,8 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
     const newLoan = Number(newLoanAmount)
     const subscription = Number(monthlySubscription) || 2100
 
-    if (emi <= 0) {
-      setError("Monthly EMI is mandatory and must be greater than 0")
+    if (emi <= -1) {
+      setError("Monthly EMI is mandatory and must be greater than -1")
       return
     }
 
@@ -277,10 +277,6 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
           </DialogDescription>
         </DialogHeader>
 
-        {checkingPayment && (
-          <div className="text-center py-4 text-xs md:text-sm text-muted-foreground">Checking payment status...</div>
-        )}
-
         <div className="space-y-3 md:space-y-4 py-2 md:py-4">
           <div className="grid grid-cols-3 gap-1.5 md:gap-3">
             <div className="p-2 md:p-3 bg-blue-50 rounded-lg border border-blue-200">
@@ -309,7 +305,7 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
               <Input
                 id="emi"
                 type="number"
-                step="100"
+                step="1000"
                 min="0"
                 placeholder="₹5000"
                 value={emiPayment}
