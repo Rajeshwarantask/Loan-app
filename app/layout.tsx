@@ -5,6 +5,7 @@ import "./globals.css"
 import { PWARegister } from "@/components/pwa/pwa-register"
 import { InstallPrompt } from "@/components/pwa/install-prompt"
 import { Toaster } from "@/components/ui/toaster"
+import { ChunkErrorHandler } from "@/components/chunk-error-handler"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -28,7 +29,7 @@ export const metadata: Metadata = {
   formatDetection: {
     telephone: false,
   },
-    generator: 'v0.app'
+  generator: "v0.app",
 }
 
 export const viewport: Viewport = {
@@ -53,12 +54,26 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Vizhuthugal" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.addEventListener('error', function(e) {
+                if (e.message && (e.message.includes('Failed to load chunk') || e.message.includes('Cannot find module'))) {
+                  console.error('[v0] Chunk loading error detected, reloading...');
+                  window.location.href = window.location.origin;
+                }
+              });
+            `,
+          }}
+        />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}>
-        <PWARegister />
-        {children}
-        <InstallPrompt />
-        <Toaster />
+        <ChunkErrorHandler>
+          <PWARegister />
+          {children}
+          <InstallPrompt />
+          <Toaster />
+        </ChunkErrorHandler>
       </body>
     </html>
   )
