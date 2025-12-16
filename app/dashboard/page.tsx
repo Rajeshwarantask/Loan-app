@@ -6,6 +6,9 @@ import { DashboardStats } from "@/components/dashboard/dashboard-stats"
 import { LoanOverview } from "@/components/dashboard/loan-overview"
 import { RecentNotices } from "@/components/dashboard/recent-notices"
 
+export const revalidate = 0
+export const dynamic = "force-dynamic"
+
 export default async function DashboardPage() {
   const supabase = await createClient()
 

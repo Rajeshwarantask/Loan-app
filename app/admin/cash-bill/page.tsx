@@ -10,6 +10,9 @@ interface User {
   member_id: string
 }
 
+export const revalidate = 0
+export const dynamic = "force-dynamic"
+
 export default async function CashBillPage() {
   const profile = await requireAdmin()
   const supabase = await createClient()

@@ -4,6 +4,9 @@ import { Sidebar } from "@/components/layout/sidebar"
 import { MobileNav } from "@/components/layout/mobile-nav"
 import { LoanManagementClient } from "@/components/admin/loan-management-client"
 
+export const revalidate = 0
+export const dynamic = "force-dynamic"
+
 export default async function AdminLoansPage() {
   const profile = await requireAdmin()
   const supabase = await createClient()

@@ -4,6 +4,9 @@ import { BulkSettingsClient } from "@/components/admin/bulk-settings-client"
 import { Sidebar } from "@/components/layout/sidebar"
 import { MobileNav } from "@/components/layout/mobile-nav"
 
+export const revalidate = 0
+export const dynamic = "force-dynamic"
+
 export default async function BulkSettingsPage() {
   const supabase = await createServerClient()
 

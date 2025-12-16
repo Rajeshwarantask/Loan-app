@@ -46,15 +46,17 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
   const principalRemaining = loan.remaining_balance ?? loan.loan_amount
   const defaultEmi = loan.monthly_emi || 5000
 
-  const [emiPayment, setEmiPayment] = useState(defaultEmi.toString())
+  const [emiPayment, setEmiPayment] = useState("0")
   const [additionalPrincipalPayment, setAdditionalPrincipalPayment] = useState("0")
   const [newLoanAmount, setNewLoanAmount] = useState("0")
   const [interestPayment, setInterestPayment] = useState("")
 
+  const emi = Number(emiPayment) || 0
   const additionalPrincipal = Number(additionalPrincipalPayment) || 0
   const newLoan = Number(newLoanAmount) || 0
-  const finalRemainingBalance = Math.max(0, principalRemaining - defaultEmi - additionalPrincipal + newLoan)
-  const calculatedMonthlyInterest = Math.round((finalRemainingBalance * loan.interest_rate) / 100)
+
+  const finalRemainingBalance = Math.max(0, principalRemaining - emi - additionalPrincipal + newLoan)
+  const calculatedMonthlyInterest = Math.max(0, Math.round((finalRemainingBalance * loan.interest_rate) / 100))
 
   const handleAdditionalPrincipalChange = (value: string) => {
     setAdditionalPrincipalPayment(value)
@@ -117,7 +119,7 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
     const interest = interestPayment ? Number(interestPayment) : calculatedMonthlyInterest
     const additionalPrincipal = Number(additionalPrincipalPayment)
     const newLoan = Number(newLoanAmount)
-    const subscription = Number(monthlySubscription) || 2100 // added monthly subscription to insert
+    const subscription = Number(monthlySubscription) || 2100
 
     if (emi <= 0) {
       setError("Monthly EMI is mandatory and must be greater than 0")
@@ -308,7 +310,7 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
                 id="emi"
                 type="number"
                 step="100"
-                min="1"
+                min="0"
                 placeholder="₹5000"
                 value={emiPayment}
                 onChange={(e) => setEmiPayment(e.target.value)}
