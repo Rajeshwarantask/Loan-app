@@ -113,6 +113,16 @@ export function LoanManagementClient({ loans, payments, users, additionalLoans }
     return additionalLoans.filter((al) => al.user_id === selectedUser)
   }, [additionalLoans, selectedUser])
 
+  const sortedUsers = useMemo(() => {
+    return [...users].sort((a, b) => {
+      const memberA = a.member_id || ""
+      const memberB = b.member_id || ""
+      const numA = Number.parseInt(memberA.replace(/\D/g, ""), 10) || 0
+      const numB = Number.parseInt(memberB.replace(/\D/g, ""), 10) || 0
+      return numA - numB
+    })
+  }, [users])
+
   return (
     <div className="container max-w-7xl py-2 md:py-6 px-2 md:px-6 space-y-2 md:space-y-6">
       {/* Header */}
@@ -157,7 +167,7 @@ export function LoanManagementClient({ loans, payments, users, additionalLoans }
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Members</SelectItem>
-                    {users.map((user) => (
+                    {sortedUsers.map((user) => (
                       <SelectItem key={user.id} value={user.id}>
                         {user.member_id ? `${user.member_id} - ` : ""}
                         {user.full_name}
@@ -209,7 +219,7 @@ export function LoanManagementClient({ loans, payments, users, additionalLoans }
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Members</SelectItem>
-                    {users.map((user) => (
+                    {sortedUsers.map((user) => (
                       <SelectItem key={user.id} value={user.id}>
                         {user.member_id ? `${user.member_id} - ` : ""}
                         {user.full_name}
@@ -247,7 +257,7 @@ export function LoanManagementClient({ loans, payments, users, additionalLoans }
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Members</SelectItem>
-                  {users.map((user) => (
+                  {sortedUsers.map((user) => (
                     <SelectItem key={user.id} value={user.id}>
                       {user.member_id ? `${user.member_id} - ` : ""}
                       {user.full_name}
@@ -286,7 +296,7 @@ export function LoanManagementClient({ loans, payments, users, additionalLoans }
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Members</SelectItem>
-                  {users.map((user) => (
+                  {sortedUsers.map((user) => (
                     <SelectItem key={user.id} value={user.id}>
                       {user.member_id ? `${user.member_id} - ` : ""}
                       {user.full_name}

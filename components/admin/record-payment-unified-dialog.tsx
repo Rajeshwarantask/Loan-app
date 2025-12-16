@@ -231,14 +231,13 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
         const { error: updateLoanError } = await supabase
           .from("loans")
           .update({
-            loan_amount: loanData.loan_amount + newLoan,
-            remaining_balance: newRemainingBalance, // Already includes the new loan from line 197
+            remaining_balance: newRemainingBalance, // Already includes the new loan
           })
           .eq("id", loan.id)
 
         if (updateLoanError) {
           console.error("[v0] Loan update error:", updateLoanError)
-          throw new Error("Additional loan created but failed to update total loan amount")
+          throw new Error("Additional loan created but failed to update remaining balance")
         }
       }
 
@@ -316,7 +315,6 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
                 className="h-7 md:h-9 text-xs md:text-sm border-red-300 focus:border-red-500"
                 required
                 disabled={hasPaymentThisMonth}
-                readOnly={true}
               />
               <p className="text-[9px] md:text-xs text-muted-foreground">Monthly EMI</p>
             </div>
