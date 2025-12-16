@@ -20,6 +20,25 @@ export default function GlobalError({
     error.message?.includes("404") ||
     error.message?.includes("Cannot find module")
 
+  const handleRefresh = () => {
+    if (isChunkError) {
+      // Use window.location.reload(true) for hard refresh, or navigate with cache-busting
+      if (navigator.serviceWorker) {
+        // Clear all service workers to remove cached chunks
+        navigator.serviceWorker.getRegistrations().then((registrations) => {
+          registrations.forEach((registration) => registration.unregister())
+        })
+      }
+      // Hard refresh - bypass cache entirely
+      window.location.href = window.location.href + "?t=" + Date.now()
+      setTimeout(() => {
+        window.location.reload(true) // Force hard refresh if href doesn't work
+      }, 100)
+    } else {
+      reset()
+    }
+  }
+
   return (
     <html>
       <body>
@@ -54,14 +73,7 @@ export default function GlobalError({
                 : "An unexpected error occurred. Please try again."}
             </p>
             <button
-              onClick={() => {
-                if (isChunkError) {
-                  // Clear cache and reload for chunk errors
-                  window.location.href = window.location.origin
-                } else {
-                  reset()
-                }
-              }}
+              onClick={handleRefresh}
               style={{
                 backgroundColor: "#10b981",
                 color: "white",

@@ -12,14 +12,16 @@ export function ChunkErrorHandler({ children }: { children: ReactNode }) {
         event.filename?.includes("_next/static/chunks")
       ) {
         console.error("[v0] Chunk loading error detected:", event.message)
-        // Clear localStorage to remove stale service worker
-        try {
-          localStorage.clear()
-        } catch (e) {
-          console.error("[v0] Failed to clear localStorage:", e)
+
+        if (navigator.serviceWorker) {
+          navigator.serviceWorker.getRegistrations().then((registrations) => {
+            registrations.forEach((registration) => registration.unregister())
+          })
         }
-        // Reload with cache bust
-        window.location.href = window.location.origin
+
+        // Hard refresh with cache busting query parameter
+        const redirectUrl = window.location.href.split("?")[0] + "?t=" + Date.now()
+        window.location.href = redirectUrl
       }
     }
 
