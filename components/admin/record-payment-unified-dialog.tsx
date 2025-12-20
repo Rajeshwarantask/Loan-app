@@ -205,7 +205,6 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
         .update({
           remaining_balance: newRemainingBalance,
           status: newStatus,
-          monthly_emi: emi,
         })
         .eq("id", loan.id)
 
