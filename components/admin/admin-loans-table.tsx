@@ -16,7 +16,7 @@ interface Loan {
   loan_amount: number
   interest_rate: number
   status: string
-  created_at: string // changed from requested_at
+  created_at: string
   remaining_balance?: number
   profiles: {
     full_name: string
@@ -40,19 +40,25 @@ interface InterestStatus {
   monthYear: string
 }
 
+interface MonthOpeningBalance {
+  [loanId: string]: number
+}
+
 export function AdminLoansTable({ loans }: AdminLoansTableProps) {
   const [recordStatusMap, setRecordStatusMap] = useState<Record<string, InterestStatus>>({})
+  const [monthOpeningBalances, setMonthOpeningBalances] = useState<MonthOpeningBalance>({})
   const [selectedLoan, setSelectedLoan] = useState<Loan | null>(null)
   const [loanDetailsOpen, setLoanDetailsOpen] = useState(false)
 
   useEffect(() => {
-    const checkPaymentRecords = async () => {
+    const fetchLoanData = async () => {
       const supabase = createClient()
       const now = new Date()
       const currentMonth = now.getMonth() + 1
       const currentYear = now.getFullYear()
 
       const statusMap: Record<string, InterestStatus> = {}
+      const openingBalances: MonthOpeningBalance = {}
 
       for (const loan of loans) {
         const firstDay = new Date(currentYear, currentMonth - 1, 1).toISOString().split("T")[0]
@@ -73,13 +79,44 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
         } else {
           statusMap[loan.id] = { marked: false, monthYear: "" }
         }
+
+        const previousMonth = currentMonth === 1 ? 12 : currentMonth - 1
+        const previousYear = currentMonth === 1 ? currentYear - 1 : currentYear
+        const prevPeriodKey = `${previousYear}-${String(previousMonth).padStart(2, "0")}`
+
+        const { data: previousPayments } = await supabase
+          .from("loan_payments")
+          .select("remaining_balance")
+          .eq("loan_id", loan.id)
+          .eq("period_key", prevPeriodKey)
+          .order("payment_date", { ascending: false })
+          .limit(1)
+
+        if (previousPayments && previousPayments.length > 0) {
+          openingBalances[loan.id] = previousPayments[0].remaining_balance
+        } else {
+          const { data: historyData } = await supabase
+            .from("monthly_loan_records_history")
+            .select("total_loan_outstanding")
+            .eq("user_id", loan.user_id)
+            .eq("period_key", prevPeriodKey)
+            .order("archived_at", { ascending: false })
+            .limit(1)
+
+          if (historyData && historyData.length > 0) {
+            openingBalances[loan.id] = historyData[0].total_loan_outstanding
+          } else {
+            openingBalances[loan.id] = loan.loan_amount
+          }
+        }
       }
 
       setRecordStatusMap(statusMap)
+      setMonthOpeningBalances(openingBalances)
     }
 
     if (loans.length > 0) {
-      checkPaymentRecords()
+      fetchLoanData()
     }
   }, [loans])
 
@@ -101,6 +138,7 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
         <TableBody>
           {loans.map((loan) => {
             const recordStatus = recordStatusMap[loan.id]
+            const totalLoan = monthOpeningBalances[loan.id] ?? loan.loan_amount
             const principalRemaining = loan.remaining_balance ?? loan.loan_amount
 
             return (
@@ -109,7 +147,7 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
                 <TableCell className="px-2 md:px-4">
                   <div className="font-medium">{loan.profiles.full_name}</div>
                 </TableCell>
-                <TableCell className="font-semibold px-2 md:px-4">{formatCurrency(loan.loan_amount)}</TableCell>
+                <TableCell className="font-semibold px-2 md:px-4">{formatCurrency(totalLoan)}</TableCell>
                 <TableCell className="font-semibold px-2 md:px-4">{formatCurrency(principalRemaining)}</TableCell>
                 <TableCell className="px-2 md:px-4 hidden md:table-cell">{loan.interest_rate}%</TableCell>
                 <TableCell className="px-2 md:px-4">

@@ -34,10 +34,12 @@ export default async function MonthlyCyclesPage() {
 
   // Join profiles data with monthly records
   const recordsWithProfiles =
-    monthlyRecords?.map((record) => ({
-      ...record,
-      profiles: profiles?.find((p) => p.id === record.user_id),
-    })) || []
+    monthlyRecords
+      ?.map((record) => ({
+        ...record,
+        profiles: profiles?.find((p) => p.id === record.user_id),
+      }))
+      .filter((record) => record.profiles) || []
 
   const { data: members } = await supabase.from("profiles").select("id, full_name, email, member_id").order("member_id")
 

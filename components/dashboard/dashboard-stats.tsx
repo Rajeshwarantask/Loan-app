@@ -24,7 +24,7 @@ export async function DashboardStats({ userId, role }: DashboardStatsProps) {
 
   if (role === "admin") {
     // Admin stats
-    const { data: loans } = await supabase.from("loans").select("loan_amount, status")
+    const { data: loans } = await supabase.from("loans").select("loan_amount, status, created_at")
 
     const { data: payments } = await supabase
       .from("loan_payments")
@@ -32,22 +32,31 @@ export async function DashboardStats({ userId, role }: DashboardStatsProps) {
 
     const { data: requests } = await supabase.from("loan_requests").select("status")
 
+    const currentDate = new Date()
+    const currentPeriodKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`
+
     const totalLoansIssued =
-      loans?.reduce(
-        (sum, loan) => (loan.status === "active" || loan.status === "completed" ? sum + Number(loan.loan_amount) : sum),
-        0,
-      ) || 0
+      loans?.reduce((sum, loan) => {
+        if ((loan.status === "active" || loan.status === "completed") && loan.created_at) {
+          const loanDate = new Date(loan.created_at)
+          const loanPeriodKey = `${loanDate.getFullYear()}-${String(loanDate.getMonth() + 1).padStart(2, "0")}`
+          if (loanPeriodKey === currentPeriodKey) {
+            return sum + Number(loan.loan_amount)
+          }
+        }
+        return sum
+      }, 0) || 0
 
     const totalInterestCollected =
-      payments?.reduce((sum, payment) => (payment.status === "paid" ? sum + Number(payment.interest_paid) : sum), 0) ||
-      0
+      payments?.reduce((sum, payment) => {
+        if (payment.status === "paid" && payment.period_key === currentPeriodKey) {
+          return sum + Number(payment.interest_paid || 0)
+        }
+        return sum
+      }, 0) || 0
 
     const activeLoans = loans?.filter((loan) => loan.status === "active").length || 0
     const pendingRequests = requests?.filter((req) => req.status === "pending").length || 0
-
-    // Get current month's EMI (this month only)
-    const currentDate = new Date()
-    const currentPeriodKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`
 
     const currentMonthEmi =
       payments?.reduce((sum, payment) => {
@@ -57,17 +66,13 @@ export async function DashboardStats({ userId, role }: DashboardStatsProps) {
         return sum
       }, 0) || 0
 
-    const totalEmiCollected =
-      payments?.reduce(
-        (sum, payment) => (payment.status === "paid" ? sum + Number(payment.monthly_emi || 0) : sum),
-        0,
-      ) || 0
-
     const totalPrincipalCollected =
-      payments?.reduce(
-        (sum, payment) => (payment.status === "paid" ? sum + Number(payment.principal_paid || 0) : sum),
-        0,
-      ) || 0
+      payments?.reduce((sum, payment) => {
+        if (payment.status === "paid" && payment.period_key === currentPeriodKey) {
+          return sum + Number(payment.principal_paid || 0)
+        }
+        return sum
+      }, 0) || 0
 
     const currentMonthSubscription =
       payments?.reduce((sum, payment) => {
@@ -79,7 +84,7 @@ export async function DashboardStats({ userId, role }: DashboardStatsProps) {
 
     const totalSubscriptionReceived = currentMonthSubscription
 
-    const totalTurnover = totalSubscriptionReceived + totalLoansIssued + totalEmiCollected + totalInterestCollected
+    const totalTurnover = totalSubscriptionReceived + totalLoansIssued + currentMonthEmi + totalInterestCollected
     const investedAmount = 0
     const remainingTurnover = totalTurnover - investedAmount
     const monthlyInHandClosing = totalLoansIssued + totalInterestCollected
@@ -217,18 +222,26 @@ export async function DashboardStats({ userId, role }: DashboardStatsProps) {
   // User stats
   const { data: loans } = await supabase
     .from("loans")
-    .select("loan_amount, remaining_balance, status")
+    .select("loan_amount, remaining_balance, status, created_at")
     .eq("user_id", userId)
 
   const { data: payments } = await supabase
     .from("loan_payments")
-    .select("interest_paid, remaining_balance, monthly_subscription, status")
+    .select("interest_paid, remaining_balance, monthly_subscription, status, period_key")
     .eq("user_id", userId)
+
+  const currentDate = new Date()
+  const currentPeriodKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`
 
   const totalLoanTaken = loans?.reduce((sum, loan) => sum + Number(loan.loan_amount), 0) || 0
 
   const totalInterestPaid =
-    payments?.reduce((sum, payment) => (payment.status === "paid" ? sum + Number(payment.interest_paid) : sum), 0) || 0
+    payments?.reduce((sum, payment) => {
+      if (payment.status === "paid" && payment.period_key === currentPeriodKey) {
+        return sum + Number(payment.interest_paid || 0)
+      }
+      return sum
+    }, 0) || 0
 
   const activeLoans = loans?.filter((loan) => loan.status === "active") || []
 
@@ -239,10 +252,12 @@ export async function DashboardStats({ userId, role }: DashboardStatsProps) {
   const missedPayments = payments?.filter((payment) => payment.status === "missed").length || 0
 
   const totalSubscriptionPaid =
-    payments?.reduce(
-      (sum, payment) => (payment.status === "paid" ? sum + Number(payment.monthly_subscription || 0) : sum),
-      0,
-    ) || 0
+    payments?.reduce((sum, payment) => {
+      if (payment.status === "paid" && payment.period_key === currentPeriodKey) {
+        return sum + Number(payment.monthly_subscription || 0)
+      }
+      return sum
+    }, 0) || 0
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

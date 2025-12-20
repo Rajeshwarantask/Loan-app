@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import {
@@ -32,11 +32,14 @@ export function InitializeMonthDialog({ members }: InitializeMonthDialogProps) {
   const [error, setError] = useState<string | null>(null)
   const [selectedMonth, setSelectedMonth] = useState<string>("")
   const [selectedYear, setSelectedYear] = useState<string>("")
+  const [isMonthInitialized, setIsMonthInitialized] = useState(false)
+  const [isChecking, setIsChecking] = useState(true)
 
   const router = useRouter()
   const { toast } = useToast()
 
   const currentYear = new Date().getFullYear()
+  const currentMonth = new Date().getMonth() + 1
   const years = Array.from({ length: 5 }, (_, i) => currentYear - 2 + i)
   const months = [
     { value: "1", label: "January" },
@@ -52,6 +55,32 @@ export function InitializeMonthDialog({ members }: InitializeMonthDialogProps) {
     { value: "11", label: "November" },
     { value: "12", label: "December" },
   ]
+
+  useEffect(() => {
+    const checkInitialization = async () => {
+      try {
+        const supabase = createClient()
+        const now = new Date()
+        const currentPeriodKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+
+        const { data, error } = await supabase
+          .from("monthly_loan_records")
+          .select("id")
+          .eq("period_key", currentPeriodKey)
+          .limit(1)
+
+        if (!error && data && data.length > 0) {
+          setIsMonthInitialized(true)
+        }
+      } catch (err) {
+        console.error("[v0] Error checking initialization:", err)
+      } finally {
+        setIsChecking(false)
+      }
+    }
+
+    checkInitialization()
+  }, [])
 
   const handleSubmit = async () => {
     if (!selectedMonth || !selectedYear) {
@@ -72,6 +101,8 @@ export function InitializeMonthDialog({ members }: InitializeMonthDialogProps) {
 
       const monthYear = `${selectedYear}-${selectedMonth.padStart(2, "0")}`
 
+      console.log("[v0] Initializing month:", monthYear, "for", members.length, "members")
+
       const {
         data: { user },
       } = await supabase.auth.getUser()
@@ -80,17 +111,24 @@ export function InitializeMonthDialog({ members }: InitializeMonthDialogProps) {
         throw new Error("User not authenticated")
       }
 
+      console.log("[v0] Current user:", user.id)
+
       const { data, error: rpcError } = await supabase.rpc("initialize_new_month", {
         p_period_key: monthYear,
         p_created_by: user.id,
       })
 
+      console.log("[v0] RPC response:", { data, error: rpcError })
+
       if (rpcError) {
+        console.error("[v0] RPC error:", rpcError)
         throw new Error(rpcError.message || "Failed to initialize month")
       }
 
       if (data) {
         const result = typeof data === "string" ? JSON.parse(data) : data
+
+        console.log("[v0] Parsed result:", result)
 
         if (result.success && result.records_created > 0) {
           const monthName = months.find((m) => m.value === selectedMonth)?.label
@@ -101,10 +139,15 @@ export function InitializeMonthDialog({ members }: InitializeMonthDialogProps) {
           setOpen(false)
           router.refresh()
         } else if (result.records_created === 0) {
+          console.warn("[v0] No records created")
           setError("No member records were created. Please ensure members exist with role='member'.")
+        } else if (!result.success && result.error) {
+          console.error("[v0] Function returned error:", result.error)
+          setError(result.error)
         }
       }
     } catch (err: any) {
+      console.error("[v0] Error initializing month:", err)
       setError(err.message || "An error occurred")
     } finally {
       setIsLoading(false)
@@ -114,9 +157,9 @@ export function InitializeMonthDialog({ members }: InitializeMonthDialogProps) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>
+        <Button variant={isMonthInitialized ? "destructive" : "default"} disabled={isChecking}>
           <PlusCircle className="h-4 w-4 mr-2" />
-          Initialize New Month
+          {isChecking ? "Checking..." : isMonthInitialized ? "Initialized" : "Initialize"}
         </Button>
       </DialogTrigger>
 

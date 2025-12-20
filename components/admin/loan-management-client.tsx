@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
@@ -11,6 +11,8 @@ import { LoanHistoryTable } from "./loan-history-table"
 import { AddLoanDialog } from "./add-loan-dialog"
 import { UserLoanSummaryTable } from "./user-loan-summary-table"
 import { AdditionalLoanHistory } from "./additional-loan-history"
+import { QuickInitializeButton } from "./quick-initialize-button"
+import { createClient } from "@/lib/supabase/client"
 
 interface Profile {
   id: string
@@ -69,6 +71,38 @@ export function LoanManagementClient({ loans, payments, users, additionalLoans }
   const [selectedUser, setSelectedUser] = useState<string>("all")
   const [activeTab, setActiveTab] = useState("active-loans")
   const [loanStatusTab, setLoanStatusTab] = useState("active")
+  const [isMonthInitialized, setIsMonthInitialized] = useState(false)
+  const [isCheckingInitialization, setIsCheckingInitialization] = useState(true)
+
+  useEffect(() => {
+    const checkMonthInitialization = async () => {
+      try {
+        const supabase = createClient()
+        const now = new Date()
+        const currentPeriodKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+
+        const { data, error } = await supabase
+          .from("monthly_loan_records")
+          .select("id")
+          .eq("period_key", currentPeriodKey)
+          .limit(1)
+
+        if (error) {
+          console.error("[v0] Error checking month initialization:", error)
+          setIsMonthInitialized(false)
+        } else {
+          setIsMonthInitialized(data && data.length > 0)
+        }
+      } catch (err) {
+        console.error("[v0] Error in checkMonthInitialization:", err)
+        setIsMonthInitialized(false)
+      } finally {
+        setIsCheckingInitialization(false)
+      }
+    }
+
+    checkMonthInitialization()
+  }, [])
 
   const filteredLoans = useMemo(() => {
     return loans.filter((loan) => {
@@ -178,6 +212,7 @@ export function LoanManagementClient({ loans, payments, users, additionalLoans }
 
                 <div className="flex gap-2">
                   <AddLoanDialog users={users} />
+                  {!isCheckingInitialization && <QuickInitializeButton isInitialized={isMonthInitialized} />}
                 </div>
               </div>
             </CardContent>

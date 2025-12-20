@@ -50,11 +50,13 @@ export function MonthlyRecordTable({ records, monthYear }: MonthlyRecordTablePro
     }).format(amount)
   }
 
-  const sortedRecords = [...records].sort((a, b) => {
-    const aId = a.profiles.member_id || ""
-    const bId = b.profiles.member_id || ""
-    return aId.localeCompare(bId)
-  })
+  const sortedRecords = [...records]
+    .filter((record) => record.profiles && record.profiles.member_id)
+    .sort((a, b) => {
+      const aId = a.profiles?.member_id || ""
+      const bId = b.profiles?.member_id || ""
+      return aId.localeCompare(bId, undefined, { numeric: true })
+    })
 
   return (
     <div className="rounded-md border overflow-x-auto">
@@ -93,8 +95,8 @@ export function MonthlyRecordTable({ records, monthYear }: MonthlyRecordTablePro
           ) : (
             sortedRecords.map((record) => (
               <TableRow key={record.id}>
-                <TableCell className="font-medium px-2 md:px-4">{record.profiles.member_id || "N/A"}</TableCell>
-                <TableCell className="px-2 md:px-4">{record.profiles.full_name}</TableCell>
+                <TableCell className="font-medium px-2 md:px-4">{record.profiles?.member_id || "N/A"}</TableCell>
+                <TableCell className="px-2 md:px-4">{record.profiles?.full_name || "Unknown"}</TableCell>
                 <TableCell className="text-right px-2 md:px-4">{formatCurrency(record.monthly_subscription)}</TableCell>
                 <TableCell className="text-right px-2 md:px-4">{formatCurrency(record.total_loan_taken)}</TableCell>
                 <TableCell className="text-right px-2 md:px-4">{formatCurrency(record.additional_principal)}</TableCell>

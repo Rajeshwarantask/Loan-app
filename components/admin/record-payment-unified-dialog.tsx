@@ -243,12 +243,88 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
         }
       }
 
+      await checkAndAutoInitializeNextMonth(supabase, paymentYear, paymentMonth)
+
       setOpen(false)
       router.refresh()
     } catch (err: any) {
       setError(err.message || "An error occurred while recording the payment")
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const checkAndAutoInitializeNextMonth = async (supabase: any, paymentYear: number, paymentMonth: number) => {
+    try {
+      const periodKey = `${paymentYear}-${String(paymentMonth).padStart(2, "0")}`
+
+      console.log("[v0] Checking if all loans are marked for period:", periodKey)
+
+      // Get count of all active loans
+      const { count: totalActiveLoans, error: activeLoansError } = await supabase
+        .from("loans")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "active")
+
+      if (activeLoansError) {
+        console.error("[v0] Error counting active loans:", activeLoansError)
+        return
+      }
+
+      console.log("[v0] Total active loans:", totalActiveLoans)
+
+      const { data: uniqueLoans, error: markedLoansError } = await supabase
+        .from("loan_payments")
+        .select("loan_id")
+        .eq("period_key", periodKey)
+
+      if (markedLoansError) {
+        console.error("[v0] Error fetching marked loans:", markedLoansError)
+        return
+      }
+
+      // Count unique loan_ids
+      const uniqueLoanIds = new Set(uniqueLoans?.map((p: any) => p.loan_id) || [])
+      const markedLoans = uniqueLoanIds.size
+
+      console.log("[v0] Unique marked loans:", markedLoans, "Total active loans:", totalActiveLoans)
+
+      // If all active loans are marked, initialize next month
+      if (totalActiveLoans > 0 && markedLoans >= totalActiveLoans) {
+        const nextMonth = paymentMonth === 12 ? 1 : paymentMonth + 1
+        const nextYear = paymentMonth === 12 ? paymentYear + 1 : paymentYear
+        const nextPeriodKey = `${nextYear}-${String(nextMonth).padStart(2, "0")}`
+
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+
+        if (!user) {
+          console.error("[v0] User not authenticated for auto-initialization")
+          return
+        }
+
+        console.log("[v0] All loans marked! Auto-initializing next month:", nextPeriodKey)
+
+        const { data, error: rpcError } = await supabase.rpc("initialize_new_month", {
+          p_period_key: nextPeriodKey,
+          p_created_by: user.id,
+        })
+
+        if (rpcError) {
+          console.error("[v0] Auto-initialization error:", rpcError)
+          // Don't throw error, just log it so payment still succeeds
+        } else if (data) {
+          const result = typeof data === "string" ? JSON.parse(data) : data
+          console.log("[v0] Auto-initialization successful:", result)
+          alert(`All loans have been paid for this month! Successfully initialized ${nextPeriodKey}`)
+        }
+      } else {
+        console.log("[v0] Not all loans marked yet. Need", totalActiveLoans - markedLoans, "more payments")
+      }
+    } catch (err) {
+      console.error("[v0] Error in auto-initialization check:", err)
+      // Don't throw error, just log it so payment still succeeds
     }
   }
 
