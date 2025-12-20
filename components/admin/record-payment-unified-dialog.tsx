@@ -44,9 +44,9 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
   const [monthlySubscription, setMonthlySubscription] = useState("2100") // added monthly subscription state
 
   const principalRemaining = loan.remaining_balance ?? loan.loan_amount
-  const defaultEmi = loan.monthly_emi || 5000
+  const defaultEmi = 5000
 
-  const [emiPayment, setEmiPayment] = useState("0")
+  const [emiPayment, setEmiPayment] = useState(defaultEmi.toString())
   const [additionalPrincipalPayment, setAdditionalPrincipalPayment] = useState("0")
   const [newLoanAmount, setNewLoanAmount] = useState("0")
   const [interestPayment, setInterestPayment] = useState("")
@@ -153,7 +153,7 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
 
       const { data: loanData, error: loanError } = await supabase
         .from("loans")
-        .select("remaining_balance, status, interest_rate, loan_amount, monthly_emi")
+        .select("remaining_balance, status, interest_rate, loan_amount")
         .eq("id", loan.id)
         .single()
 
