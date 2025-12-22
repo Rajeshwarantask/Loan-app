@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { PlusCircle } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
+import { useUser } from "@/hooks/use-user" // Import useUser hook to get user data
 
 interface InitializeMonthDialogProps {
   members: Array<{
@@ -34,9 +35,11 @@ export function InitializeMonthDialog({ members }: InitializeMonthDialogProps) {
   const [selectedYear, setSelectedYear] = useState<string>("")
   const [isMonthInitialized, setIsMonthInitialized] = useState(false)
   const [isChecking, setIsChecking] = useState(true)
+  const [uninitializedMonthsWarning, setUninitializedMonthsWarning] = useState<string | null>(null)
 
   const router = useRouter()
   const { toast } = useToast()
+  const { user } = useUser() // Declare user variable using useUser hook
 
   const currentYear = new Date().getFullYear()
   const currentMonth = new Date().getMonth() + 1
@@ -55,6 +58,12 @@ export function InitializeMonthDialog({ members }: InitializeMonthDialogProps) {
     { value: "11", label: "November" },
     { value: "12", label: "December" },
   ]
+
+  const isMonthInFuture = (month: number, year: number): boolean => {
+    const selectedDate = new Date(year, month - 1)
+    const currentDate = new Date(currentYear, currentMonth - 1)
+    return selectedDate > currentDate
+  }
 
   useEffect(() => {
     const checkInitialization = async () => {
@@ -88,6 +97,16 @@ export function InitializeMonthDialog({ members }: InitializeMonthDialogProps) {
       return
     }
 
+    const month = Number.parseInt(selectedMonth)
+    const year = Number.parseInt(selectedYear)
+
+    if (isMonthInFuture(month, year)) {
+      setError(
+        `Cannot initialize future months. You can only initialize ${months.find((m) => m.value === currentMonth.toString())?.label} ${currentYear} or earlier.`,
+      )
+      return
+    }
+
     if (members.length === 0) {
       setError("No members found. Please add members before initializing a month.")
       return
@@ -95,27 +114,55 @@ export function InitializeMonthDialog({ members }: InitializeMonthDialogProps) {
 
     setIsLoading(true)
     setError(null)
+    setUninitializedMonthsWarning(null)
 
     try {
       const supabase = createClient()
 
       const monthYear = `${selectedYear}-${selectedMonth.padStart(2, "0")}`
 
-      console.log("[v0] Initializing month:", monthYear, "for", members.length, "members")
+      const { data: paymentsData, error: paymentsError } = await supabase
+        .from("loan_payments")
+        .select("period_key")
+        .lt("period_key", monthYear)
+        .order("period_key", { ascending: false })
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+      if (!paymentsError && paymentsData && paymentsData.length > 0) {
+        const paymentPeriods = [...new Set(paymentsData.map((p) => p.period_key))]
 
-      if (!user) {
-        throw new Error("User not authenticated")
+        const { data: recordsData, error: recordsError } = await supabase
+          .from("monthly_loan_records")
+          .select("period_key")
+          .in("period_key", paymentPeriods)
+
+        if (!recordsError) {
+          const initializedPeriods = new Set(recordsData?.map((r) => r.period_key) || [])
+          const uninitializedPeriods = paymentPeriods.filter((p) => !initializedPeriods.has(p))
+
+          if (uninitializedPeriods.length > 0) {
+            const monthNames = uninitializedPeriods
+              .sort()
+              .map((periodKey) => {
+                const [year, month] = periodKey.split("-")
+                const date = new Date(Number.parseInt(year), Number.parseInt(month) - 1)
+                return date.toLocaleString("default", { month: "long", year: "numeric" })
+              })
+              .join(", ")
+
+            setUninitializedMonthsWarning(
+              `Warning: Payment data exists for ${monthNames} but these months are not initialized. Please initialize them first to maintain proper accounting continuity.`,
+            )
+            setIsLoading(false)
+            return
+          }
+        }
       }
 
-      console.log("[v0] Current user:", user.id)
+      console.log("[v0] Initializing month:", monthYear, "for", members.length, "members")
 
       const { data, error: rpcError } = await supabase.rpc("initialize_new_month", {
         p_period_key: monthYear,
-        p_created_by: user.id,
+        p_created_by: user?.id,
       })
 
       console.log("[v0] RPC response:", { data, error: rpcError })
@@ -180,11 +227,18 @@ export function InitializeMonthDialog({ members }: InitializeMonthDialogProps) {
                 <SelectValue placeholder="Select month" />
               </SelectTrigger>
               <SelectContent>
-                {months.map((month) => (
-                  <SelectItem key={month.value} value={month.value}>
-                    {month.label}
-                  </SelectItem>
-                ))}
+                {months.map((month) => {
+                  const monthNum = Number.parseInt(month.value)
+                  const yearNum = selectedYear ? Number.parseInt(selectedYear) : currentYear
+                  const isFuture = isMonthInFuture(monthNum, yearNum)
+
+                  return (
+                    <SelectItem key={month.value} value={month.value} disabled={isFuture}>
+                      {month.label}
+                      {isFuture && " (Future)"}
+                    </SelectItem>
+                  )
+                })}
               </SelectContent>
             </Select>
           </div>
@@ -204,6 +258,13 @@ export function InitializeMonthDialog({ members }: InitializeMonthDialogProps) {
               </SelectContent>
             </Select>
           </div>
+
+          {uninitializedMonthsWarning && (
+            <div className="rounded-md bg-amber-50 p-3 text-sm text-amber-800 border border-amber-200">
+              <div className="font-medium mb-1">Uninitialized Months Detected</div>
+              <div>{uninitializedMonthsWarning}</div>
+            </div>
+          )}
 
           {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-600 border border-red-200">{error}</div>}
         </div>

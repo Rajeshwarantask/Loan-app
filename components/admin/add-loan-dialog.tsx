@@ -175,7 +175,7 @@ export function AddLoanDialog({ users }: AddLoanDialogProps) {
             </div>
             <div className="space-y-2">
               <Label htmlFor="amount">Loan Amount (₹)</Label>
-              <Input id="amount" name="amount" type="number" step="100" min="10000" required />
+              <Input id="amount" name="amount" type="number" step="1000" min="10000" defaultValue="5000" required />
             </div>
             <div className="space-y-2">
               <Label htmlFor="interestRate">Interest Rate (%)</Label>

@@ -215,7 +215,7 @@ export function EditMonthlyRecordDialog({ record }: EditMonthlyRecordDialogProps
               <Input
                 id="newLoanTaken"
                 type="number"
-                step="0.01"
+                step="1000"
                 min="0"
                 value={newLoanTaken}
                 onChange={(e) => setNewLoanTaken(e.target.value)}
@@ -244,7 +244,7 @@ export function EditMonthlyRecordDialog({ record }: EditMonthlyRecordDialogProps
               <Input
                 id="additionalPrincipal"
                 type="number"
-                step="0.01"
+                step="1000"
                 min="0"
                 value={additionalPrincipal}
                 onChange={(e) => setAdditionalPrincipal(e.target.value)}

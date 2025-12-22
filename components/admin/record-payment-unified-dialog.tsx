@@ -179,7 +179,6 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
         user_id: loan.user_id,
         member_id: loan.member_id || loan.profiles?.member_id,
         payment_date: new Date().toISOString(),
-        principal_paid: additionalPrincipal,
         interest_paid: interest,
         amount: totalAmount,
         monthly_emi: emi,
@@ -288,12 +287,7 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
 
       console.log("[v0] Unique marked loans:", markedLoans, "Total active loans:", totalActiveLoans)
 
-      // If all active loans are marked, initialize next month
       if (totalActiveLoans > 0 && markedLoans >= totalActiveLoans) {
-        const nextMonth = paymentMonth === 12 ? 1 : paymentMonth + 1
-        const nextYear = paymentMonth === 12 ? paymentYear + 1 : paymentYear
-        const nextPeriodKey = `${nextYear}-${String(nextMonth).padStart(2, "0")}`
-
         const {
           data: { user },
         } = await supabase.auth.getUser()
@@ -303,10 +297,10 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
           return
         }
 
-        console.log("[v0] All loans marked! Auto-initializing next month:", nextPeriodKey)
+        console.log("[v0] All loans marked! Auto-initializing current month:", periodKey)
 
         const { data, error: rpcError } = await supabase.rpc("initialize_new_month", {
-          p_period_key: nextPeriodKey,
+          p_period_key: periodKey,
           p_created_by: user.id,
         })
 
@@ -316,7 +310,7 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
         } else if (data) {
           const result = typeof data === "string" ? JSON.parse(data) : data
           console.log("[v0] Auto-initialization successful:", result)
-          alert(`All loans have been paid for this month! Successfully initialized ${nextPeriodKey}`)
+          alert(`All loans have been paid for this month! Successfully initialized ${periodKey}`)
         }
       } else {
         console.log("[v0] Not all loans marked yet. Need", totalActiveLoans - markedLoans, "more payments")
@@ -421,7 +415,7 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
               <Input
                 id="additionalPrincipal"
                 type="number"
-                step="100"
+                step="1000"
                 min="0"
                 placeholder="₹0"
                 value={additionalPrincipalPayment}
@@ -439,7 +433,7 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
               <Input
                 id="newLoan"
                 type="number"
-                step="100"
+                step="1000"
                 min="0"
                 placeholder="₹0"
                 value={newLoanAmount}
