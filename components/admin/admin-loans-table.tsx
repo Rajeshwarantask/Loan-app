@@ -80,37 +80,44 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
           statusMap[loan.id] = { marked: false, monthYear: "" }
         }
 
-        const previousMonth = currentMonth === 1 ? 12 : currentMonth - 1
-        const previousYear = currentMonth === 1 ? currentYear - 1 : currentYear
-        const prevPeriodKey = `${previousYear}-${String(previousMonth).padStart(2, "0")}`
-
         const { data: previousPayments } = await supabase
           .from("loan_payments")
-          .select("remaining_balance")
-          .eq("loan_id", loan.id)
-          .eq("period_key", prevPeriodKey)
+          .select("remaining_balance, period_key")
+          .eq("user_id", loan.user_id)
+          .order("period_year", { ascending: false })
+          .order("period_month", { ascending: false })
           .order("payment_date", { ascending: false })
-          .limit(1)
+          .limit(10) // Get last 10 records to find most recent previous month
 
-        if (previousPayments && previousPayments.length > 0) {
-          openingBalances[loan.id] = previousPayments[0].remaining_balance
+        console.log("[v0] AdminLoansTable - loan:", loan.profiles.member_id, "all recent payments:", previousPayments)
+
+        const currentPeriodKey = `${currentYear}-${String(currentMonth).padStart(2, "0")}`
+        const mostRecentPreviousPayment = previousPayments?.find((p) => p.period_key !== currentPeriodKey)
+
+        if (mostRecentPreviousPayment) {
+          openingBalances[loan.id] = mostRecentPreviousPayment.remaining_balance
+          console.log(
+            "[v0] AdminLoansTable - using previous month balance from",
+            mostRecentPreviousPayment.period_key,
+            ":",
+            mostRecentPreviousPayment.remaining_balance,
+          )
+        } else if (previousPayments && previousPayments.length === 0) {
+          openingBalances[loan.id] = loan.remaining_balance ?? loan.loan_amount
+          console.log(
+            "[v0] AdminLoansTable - no payment history, using loan.remaining_balance:",
+            loan.remaining_balance ?? loan.loan_amount,
+          )
         } else {
-          const { data: historyData } = await supabase
-            .from("monthly_loan_records_history")
-            .select("total_loan_outstanding")
-            .eq("user_id", loan.user_id)
-            .eq("period_key", prevPeriodKey)
-            .order("archived_at", { ascending: false })
-            .limit(1)
-
-          if (historyData && historyData.length > 0) {
-            openingBalances[loan.id] = historyData[0].total_loan_outstanding
-          } else {
-            openingBalances[loan.id] = loan.loan_amount
-          }
+          openingBalances[loan.id] = loan.remaining_balance ?? loan.loan_amount
+          console.log(
+            "[v0] AdminLoansTable - only current month data exists, using loan.remaining_balance:",
+            loan.remaining_balance ?? loan.loan_amount,
+          )
         }
       }
 
+      console.log("[v0] AdminLoansTable - final openingBalances:", openingBalances)
       setRecordStatusMap(statusMap)
       setMonthOpeningBalances(openingBalances)
     }
