@@ -73,7 +73,6 @@ export function MonthlyRecordTable({ records, monthYear }: MonthlyRecordTablePro
             <TableHead className="text-right w-[90px] whitespace-normal">Monthly Interest Income</TableHead>
             <TableHead className="text-right w-[90px] whitespace-normal">Monthly Installment Income</TableHead>
             <TableHead className="text-right w-[80px] whitespace-normal">Penalty Income</TableHead>
-            <TableHead className="text-right w-[90px] whitespace-normal">Previous Month Interest Income</TableHead>
             <TableHead className="text-right w-[90px] whitespace-normal">Total Income (Current Month)</TableHead>
             <TableHead className="text-right w-[90px] whitespace-normal">Previous Month Total Income</TableHead>
             <TableHead className="text-right w-[80px] whitespace-normal">Difference</TableHead>
@@ -111,9 +110,6 @@ export function MonthlyRecordTable({ records, monthYear }: MonthlyRecordTablePro
                   {formatCurrency(record.monthly_installment_income)}
                 </TableCell>
                 <TableCell className="text-right px-2 md:px-4">{formatCurrency(record.penalty)}</TableCell>
-                <TableCell className="text-right px-2 md:px-4">
-                  {formatCurrency(record.previous_month_total_income)}
-                </TableCell>
                 <TableCell className="text-right font-medium px-2 md:px-4">
                   {formatCurrency(record.total_income_current_month)}
                 </TableCell>

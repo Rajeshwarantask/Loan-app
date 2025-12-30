@@ -30,11 +30,20 @@ export default async function MonthlyCyclesPage() {
     .order("period_year", { ascending: false })
     .order("period_month", { ascending: false })
 
+  const { data: historyRecords } = await supabase
+    .from("monthly_loan_records_history")
+    .select("*")
+    .order("period_year", { ascending: false })
+    .order("period_month", { ascending: false })
+
+  // Combine both current and historical records
+  const allRecords = [...(monthlyRecords || []), ...(historyRecords || [])]
+
   const { data: profiles } = await supabase.from("profiles").select("id, full_name, email, member_id")
 
-  // Join profiles data with monthly records
+  // Join profiles data with all records (current + history)
   const recordsWithProfiles =
-    monthlyRecords
+    allRecords
       ?.map((record) => ({
         ...record,
         profiles: profiles?.find((p) => p.id === record.user_id),
