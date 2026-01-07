@@ -93,7 +93,7 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
 
       if (paymentError) {
         console.error("[v0] Error fetching payment balance:", paymentError)
-        setPrincipalRemaining(loan.remaining_balance ?? loan.loan_amount)
+        setPrincipalRemaining(loan.loan_amount)
         return
       }
 
@@ -107,15 +107,12 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
         )
         setPrincipalRemaining(mostRecentPayment.remaining_balance)
       } else {
-        console.log(
-          "[v0] RecordPayment - no payment history, using loans table balance:",
-          loan.remaining_balance ?? loan.loan_amount,
-        )
-        setPrincipalRemaining(loan.remaining_balance ?? loan.loan_amount)
+        console.log("[v0] RecordPayment - no payment history (first month), using loan_amount:", loan.loan_amount)
+        setPrincipalRemaining(loan.loan_amount)
       }
     } catch (err) {
       console.error("[v0] Error in fetchMostRecentBalance:", err)
-      setPrincipalRemaining(loan.remaining_balance ?? loan.loan_amount)
+      setPrincipalRemaining(loan.loan_amount)
     }
   }
 
@@ -191,20 +188,7 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
         throw new Error("You must be logged in to record payments")
       }
 
-      const { data: loanData, error: loanError } = await supabase
-        .from("loans")
-        .select("remaining_balance, status, interest_rate, loan_amount")
-        .eq("id", loan.id)
-        .single()
-
-      if (loanError) {
-        console.error("[v0] Loan fetch error:", loanError)
-        throw new Error("Failed to fetch loan data")
-      }
-
-      const currentPrincipal = loanData.remaining_balance ?? loanData.loan_amount
-
-      const monthlyInterest = Math.round((currentPrincipal * (loanData.interest_rate || loan.interest_rate)) / 100)
+      const currentPrincipal = principalRemaining
 
       const newRemainingBalance = Math.max(0, currentPrincipal - emi - additionalPrincipal + newLoan)
 
@@ -236,8 +220,22 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
         throw new Error(paymentError.message || "Failed to record payment")
       }
 
+      const { data: loanData, error: loanError } = await supabase
+        .from("loans")
+        .select("status")
+        .eq("id", loan.id)
+        .single()
+
+      if (loanError) {
+        console.error("[v0] Loan fetch error:", loanError)
+      }
+
       const shouldComplete = newRemainingBalance <= 0
-      const newStatus = shouldComplete ? "paid" : loanData.status === "approved" ? "active" : loanData.status
+      const newStatus = shouldComplete
+        ? "paid"
+        : loanData?.status === "approved"
+          ? "active"
+          : loanData?.status || "active"
 
       const { error: updateError } = await supabase
         .from("loans")
