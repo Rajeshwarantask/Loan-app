@@ -63,7 +63,7 @@ export function LoanRequestsTable({ requests, adminId }: LoanRequestsTableProps)
 
       const { data: existingLoans, error: checkError } = await supabase
         .from("loans")
-        .select("id")
+        .select("id, loan_amount, remaining_balance")
         .eq("user_id", request.user_id)
         .eq("status", "active")
 
@@ -74,18 +74,30 @@ export function LoanRequestsTable({ requests, adminId }: LoanRequestsTableProps)
       if (hasActiveLoan) {
         console.log("[v0] User has active loan, saving as additional loan")
 
+        const activeLoan = existingLoans[0]
+        const newBalance = (activeLoan.remaining_balance || 0) + request.amount
+        const newLoanAmount = (activeLoan.loan_amount || 0) + request.amount
+
         const { error: additionalLoanError } = await supabase.from("additional_loan").insert({
           user_id: request.user_id,
+          loan_id: activeLoan.id,
           additional_loan_amount: request.amount,
-          purpose: request.purpose,
           period_key: format(new Date(), "yyyy-MM"),
           period_month: new Date().getMonth() + 1,
           period_year: new Date().getFullYear(),
-          approved_by: adminId,
-          approved_at: new Date().toISOString(),
         })
 
         if (additionalLoanError) throw additionalLoanError
+
+        const { error: updateLoanError } = await supabase
+          .from("loans")
+          .update({
+            loan_amount: newLoanAmount,
+            remaining_balance: newBalance,
+          })
+          .eq("id", activeLoan.id)
+
+        if (updateLoanError) throw updateLoanError
       } else {
         console.log("[v0] No active loan found, creating new loan")
 
@@ -94,11 +106,8 @@ export function LoanRequestsTable({ requests, adminId }: LoanRequestsTableProps)
           loan_amount: request.amount,
           remaining_balance: request.amount,
           interest_rate: 15,
-          duration_months: 0,
-          purpose: request.purpose,
           status: "active",
           approved_by: adminId,
-          approved_at: new Date().toISOString(),
         })
 
         if (loanError) throw loanError
@@ -142,7 +151,6 @@ export function LoanRequestsTable({ requests, adminId }: LoanRequestsTableProps)
       router.refresh()
     } catch (error) {
       console.error("[v0] Error quick rejecting:", error)
-      alert("Failed to reject loan request.")
     } finally {
       setLoading(null)
     }
@@ -161,7 +169,7 @@ export function LoanRequestsTable({ requests, adminId }: LoanRequestsTableProps)
 
       const { data: existingLoans, error: checkError } = await supabase
         .from("loans")
-        .select("id")
+        .select("id, loan_amount, remaining_balance")
         .eq("user_id", reviewDialog.user_id)
         .eq("status", "active")
 
@@ -172,20 +180,35 @@ export function LoanRequestsTable({ requests, adminId }: LoanRequestsTableProps)
       if (hasActiveLoan) {
         console.log("[v0] User has active loan, saving as additional loan")
 
+        const activeLoan = existingLoans[0]
+        const newBalance = (activeLoan.remaining_balance || 0) + finalAmount
+        const newLoanAmount = (activeLoan.loan_amount || 0) + finalAmount
+
         const { error: additionalLoanError } = await supabase.from("additional_loan").insert({
           user_id: reviewDialog.user_id,
+          loan_id: activeLoan.id,
           additional_loan_amount: finalAmount,
-          purpose: reviewDialog.purpose,
           period_key: format(new Date(), "yyyy-MM"),
           period_month: new Date().getMonth() + 1,
           period_year: new Date().getFullYear(),
-          approved_by: adminId,
-          approved_at: new Date().toISOString(),
         })
 
         if (additionalLoanError) {
           console.error("[v0] Error creating additional loan:", additionalLoanError)
           throw additionalLoanError
+        }
+
+        const { error: updateLoanError } = await supabase
+          .from("loans")
+          .update({
+            loan_amount: newLoanAmount,
+            remaining_balance: newBalance,
+          })
+          .eq("id", activeLoan.id)
+
+        if (updateLoanError) {
+          console.error("[v0] Error updating loan:", updateLoanError)
+          throw updateLoanError
         }
       } else {
         console.log("[v0] No active loan found, creating new loan")
@@ -195,11 +218,8 @@ export function LoanRequestsTable({ requests, adminId }: LoanRequestsTableProps)
           loan_amount: finalAmount,
           remaining_balance: finalAmount,
           interest_rate: 15,
-          duration_months: 0,
-          purpose: reviewDialog.purpose,
           status: "active",
           approved_by: adminId,
-          approved_at: new Date().toISOString(),
         })
 
         if (loanError) {

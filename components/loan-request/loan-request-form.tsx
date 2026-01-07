@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -18,6 +18,7 @@ export function LoanRequestForm({ userId, onSuccess }: LoanRequestFormProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const formRef = useRef<HTMLFormElement>(null)
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -42,7 +43,7 @@ export function LoanRequestForm({ userId, onSuccess }: LoanRequestFormProps) {
       if (requestError) throw requestError
 
       setSuccess(true)
-      e.currentTarget.reset()
+      formRef.current?.reset()
 
       if (onSuccess) {
         setTimeout(() => {
@@ -66,7 +67,7 @@ export function LoanRequestForm({ userId, onSuccess }: LoanRequestFormProps) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="amount">Loan Amount (₹)</Label>
             <Input id="amount" name="amount" type="number" placeholder="2000" required min="100" step="100" />
