@@ -61,11 +61,38 @@ export function LoanRequestsTable({ requests, adminId }: LoanRequestsTableProps)
     try {
       console.log("[v0] Quick approving loan request:", request.id)
 
-      const { data: loanData, error: loanError } = await supabase
+      const { data: existingLoans, error: checkError } = await supabase
         .from("loans")
-        .insert({
+        .select("id")
+        .eq("user_id", request.user_id)
+        .eq("status", "active")
+
+      if (checkError) throw checkError
+
+      const hasActiveLoan = existingLoans && existingLoans.length > 0
+
+      if (hasActiveLoan) {
+        console.log("[v0] User has active loan, saving as additional loan")
+
+        const { error: additionalLoanError } = await supabase.from("additional_loan").insert({
           user_id: request.user_id,
-          amount: request.amount,
+          additional_loan_amount: request.amount,
+          purpose: request.purpose,
+          period_key: format(new Date(), "yyyy-MM"),
+          period_month: new Date().getMonth() + 1,
+          period_year: new Date().getFullYear(),
+          approved_by: adminId,
+          approved_at: new Date().toISOString(),
+        })
+
+        if (additionalLoanError) throw additionalLoanError
+      } else {
+        console.log("[v0] No active loan found, creating new loan")
+
+        const { error: loanError } = await supabase.from("loans").insert({
+          user_id: request.user_id,
+          loan_amount: request.amount,
+          remaining_balance: request.amount,
           interest_rate: 15,
           duration_months: 0,
           purpose: request.purpose,
@@ -73,9 +100,9 @@ export function LoanRequestsTable({ requests, adminId }: LoanRequestsTableProps)
           approved_by: adminId,
           approved_at: new Date().toISOString(),
         })
-        .select()
 
-      if (loanError) throw loanError
+        if (loanError) throw loanError
+      }
 
       const { error: requestError } = await supabase
         .from("loan_requests")
@@ -132,26 +159,56 @@ export function LoanRequestsTable({ requests, adminId }: LoanRequestsTableProps)
 
       const finalAmount = Number.parseFloat(approvedAmount) || reviewDialog.amount
 
-      const { data: loanData, error: loanError } = await supabase
+      const { data: existingLoans, error: checkError } = await supabase
         .from("loans")
-        .insert({
+        .select("id")
+        .eq("user_id", reviewDialog.user_id)
+        .eq("status", "active")
+
+      if (checkError) throw checkError
+
+      const hasActiveLoan = existingLoans && existingLoans.length > 0
+
+      if (hasActiveLoan) {
+        console.log("[v0] User has active loan, saving as additional loan")
+
+        const { error: additionalLoanError } = await supabase.from("additional_loan").insert({
           user_id: reviewDialog.user_id,
-          amount: finalAmount,
-          interest_rate: 15, // Default 15% interest
-          duration_months: 0, // Set to 0 as duration is no longer required
+          additional_loan_amount: finalAmount,
+          purpose: reviewDialog.purpose,
+          period_key: format(new Date(), "yyyy-MM"),
+          period_month: new Date().getMonth() + 1,
+          period_year: new Date().getFullYear(),
+          approved_by: adminId,
+          approved_at: new Date().toISOString(),
+        })
+
+        if (additionalLoanError) {
+          console.error("[v0] Error creating additional loan:", additionalLoanError)
+          throw additionalLoanError
+        }
+      } else {
+        console.log("[v0] No active loan found, creating new loan")
+
+        const { error: loanError } = await supabase.from("loans").insert({
+          user_id: reviewDialog.user_id,
+          loan_amount: finalAmount,
+          remaining_balance: finalAmount,
+          interest_rate: 15,
+          duration_months: 0,
           purpose: reviewDialog.purpose,
           status: "active",
           approved_by: adminId,
           approved_at: new Date().toISOString(),
         })
-        .select()
 
-      if (loanError) {
-        console.error("[v0] Error creating loan:", loanError)
-        throw loanError
+        if (loanError) {
+          console.error("[v0] Error creating loan:", loanError)
+          throw loanError
+        }
       }
 
-      console.log("[v0] Loan created successfully:", loanData)
+      console.log("[v0] Loan approved successfully")
 
       const { error: requestError } = await supabase
         .from("loan_requests")

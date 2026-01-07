@@ -80,38 +80,53 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
           statusMap[loan.id] = { marked: false, monthYear: "" }
         }
 
-        const { data: previousPayments } = await supabase
+        const { data: allPayments, error } = await supabase
           .from("loan_payments")
-          .select("remaining_balance, period_key")
+          .select("remaining_balance, period_key, period_year, period_month")
           .eq("user_id", loan.user_id)
           .order("period_year", { ascending: false })
           .order("period_month", { ascending: false })
           .order("payment_date", { ascending: false })
-          .limit(10) // Get last 10 records to find most recent previous month
+          .limit(20)
 
-        console.log("[v0] AdminLoansTable - loan:", loan.profiles.member_id, "all recent payments:", previousPayments)
+        console.log(
+          "[v0] AdminLoansTable - V" + loan.profiles.member_id,
+          "fetched payments:",
+          allPayments?.length || 0,
+          "error:",
+          error,
+        )
 
-        const currentPeriodKey = `${currentYear}-${String(currentMonth).padStart(2, "0")}`
-        const mostRecentPreviousPayment = previousPayments?.find((p) => p.period_key !== currentPeriodKey)
+        if (allPayments && allPayments.length > 0) {
+          const uniquePeriods = Array.from(new Set(allPayments.map((p) => p.period_key))).sort((a, b) => {
+            const [yearA, monthA] = a.split("-").map(Number)
+            const [yearB, monthB] = b.split("-").map(Number)
+            if (yearA !== yearB) return yearB - yearA
+            return monthB - monthA
+          })
 
-        if (mostRecentPreviousPayment) {
-          openingBalances[loan.id] = mostRecentPreviousPayment.remaining_balance
-          console.log(
-            "[v0] AdminLoansTable - using previous month balance from",
-            mostRecentPreviousPayment.period_key,
-            ":",
-            mostRecentPreviousPayment.remaining_balance,
-          )
-        } else if (previousPayments && previousPayments.length === 0) {
-          openingBalances[loan.id] = loan.remaining_balance ?? loan.loan_amount
-          console.log(
-            "[v0] AdminLoansTable - no payment history, using loan.remaining_balance:",
-            loan.remaining_balance ?? loan.loan_amount,
-          )
+          console.log("[v0] AdminLoansTable - V" + loan.profiles.member_id, "unique periods:", uniquePeriods)
+
+          if (uniquePeriods.length > 0) {
+            const mostRecentPeriod = uniquePeriods[0]
+            const mostRecentPayment = allPayments.find((p) => p.period_key === mostRecentPeriod)
+
+            if (mostRecentPayment) {
+              openingBalances[loan.id] = mostRecentPayment.remaining_balance
+              console.log(
+                "[v0] AdminLoansTable - V" + loan.profiles.member_id,
+                "using most recent period",
+                mostRecentPeriod,
+                "balance:",
+                mostRecentPayment.remaining_balance,
+              )
+            }
+          }
         } else {
           openingBalances[loan.id] = loan.remaining_balance ?? loan.loan_amount
           console.log(
-            "[v0] AdminLoansTable - only current month data exists, using loan.remaining_balance:",
+            "[v0] AdminLoansTable - V" + loan.profiles.member_id,
+            "no payment history found, using loans table:",
             loan.remaining_balance ?? loan.loan_amount,
           )
         }

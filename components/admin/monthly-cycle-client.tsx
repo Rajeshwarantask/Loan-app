@@ -8,6 +8,7 @@ import { Calendar, Check } from "lucide-react"
 import { InitializeMonthDialog } from "./initialize-month-dialog"
 import { MonthlyRecordTable } from "./monthly-record-table"
 import { MonthlyReportDialog } from "./monthly-report-dialog"
+import { DeleteMonthDialog } from "./delete-month-dialog"
 import { formatCurrency } from "@/lib/utils/loan-calculator"
 
 interface Profile {
@@ -99,6 +100,11 @@ export function MonthlyCycleClient({ monthlyRecords, members }: MonthlyCycleClie
     return date.toLocaleString("default", { month: "long", year: "numeric" })
   }
 
+  const isCurrentMonth = useMemo(() => {
+    if (!selectedMonth || availableMonths.length === 0) return false
+    return selectedMonth === availableMonths[0] // First in descending order is most recent
+  }, [selectedMonth, availableMonths])
+
   return (
     <div className="container max-w-7xl py-6 px-2 md:px-6 space-y-6">
       {/* Header */}
@@ -121,6 +127,7 @@ export function MonthlyCycleClient({ monthlyRecords, members }: MonthlyCycleClie
           {selectedMonth && currentMonthRecords.length > 0 && (
             <>
               <MonthlyReportDialog monthYear={selectedMonth} records={currentMonthRecords} />
+              <DeleteMonthDialog periodKey={selectedMonth} isCurrentMonth={isCurrentMonth} />
             </>
           )}
         </CardContent>
