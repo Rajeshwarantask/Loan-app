@@ -130,13 +130,17 @@ export function InitializeMonthDialog({ members }: InitializeMonthDialogProps) {
       if (!paymentsError && paymentsData && paymentsData.length > 0) {
         const paymentPeriods = [...new Set(paymentsData.map((p) => p.period_key))]
 
-        const { data: recordsData, error: recordsError } = await supabase
-          .from("monthly_loan_records")
-          .select("period_key")
-          .in("period_key", paymentPeriods)
+        const [currentRecords, historyRecords] = await Promise.all([
+          supabase.from("monthly_loan_records").select("period_key").in("period_key", paymentPeriods),
+          supabase.from("monthly_loan_records_history").select("period_key").in("period_key", paymentPeriods),
+        ])
 
-        if (!recordsError) {
-          const initializedPeriods = new Set(recordsData?.map((r) => r.period_key) || [])
+        if (!currentRecords.error && !historyRecords.error) {
+          const initializedPeriods = new Set([
+            ...(currentRecords.data?.map((r) => r.period_key) || []),
+            ...(historyRecords.data?.map((r) => r.period_key) || []),
+          ])
+
           const uninitializedPeriods = paymentPeriods.filter((p) => !initializedPeriods.has(p))
 
           if (uninitializedPeriods.length > 0) {

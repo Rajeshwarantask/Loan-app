@@ -296,7 +296,7 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
 
       console.log("[v0] Checking if all loans are marked for period:", periodKey)
 
-      const { count: totalActiveLoans, error: activeLoansError } = await supabase
+      const { count: currentActiveLoans, error: activeLoansError } = await supabase
         .from("loans")
         .select("*", { count: "exact", head: true })
         .eq("status", "active")
@@ -306,24 +306,41 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
         return
       }
 
-      console.log("[v0] Total active loans:", totalActiveLoans)
+      console.log("[v0] Current active loans (excluding completed):", currentActiveLoans)
 
-      const { data: uniqueLoans, error: markedLoansError } = await supabase
+      const { data: paymentsThisPeriod, error: paymentsError } = await supabase
         .from("loan_payments")
         .select("loan_id")
         .eq("period_key", periodKey)
 
-      if (markedLoansError) {
-        console.error("[v0] Error fetching marked loans:", markedLoansError)
+      if (paymentsError) {
+        console.error("[v0] Error fetching payments:", paymentsError)
         return
       }
 
-      const uniqueLoanIds = new Set(uniqueLoans?.map((p: any) => p.loan_id) || [])
-      const markedLoans = uniqueLoanIds.size
+      if (!paymentsThisPeriod || paymentsThisPeriod.length === 0) {
+        console.log("[v0] No payments recorded yet for this period")
+        return
+      }
 
-      console.log("[v0] Unique marked loans:", markedLoans, "Total active loans:", totalActiveLoans)
+      const uniqueLoanIds = [...new Set(paymentsThisPeriod.map((p: any) => p.loan_id))]
 
-      if (totalActiveLoans > 0 && markedLoans >= totalActiveLoans) {
+      const { data: activeLoansWithPayments, error: activeLoansWithPaymentsError } = await supabase
+        .from("loans")
+        .select("id")
+        .in("id", uniqueLoanIds)
+        .eq("status", "active")
+
+      if (activeLoansWithPaymentsError) {
+        console.error("[v0] Error checking active loans with payments:", activeLoansWithPaymentsError)
+        return
+      }
+
+      const markedActiveLoans = activeLoansWithPayments?.length || 0
+
+      console.log("[v0] Marked active loans:", markedActiveLoans, "Total active loans:", currentActiveLoans)
+
+      if (currentActiveLoans && currentActiveLoans > 0 && markedActiveLoans >= currentActiveLoans) {
         const {
           data: { user },
         } = await supabase.auth.getUser()
@@ -333,7 +350,7 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
           return
         }
 
-        console.log("[v0] All loans marked! Auto-initializing current month:", periodKey)
+        console.log("[v0] All active loans marked! Auto-initializing current month:", periodKey)
 
         const { data, error: rpcError } = await supabase.rpc("initialize_new_month", {
           p_period_key: periodKey,
@@ -348,7 +365,11 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
           alert(`All loans have been paid for this month! Successfully initialized ${periodKey}`)
         }
       } else {
-        console.log("[v0] Not all loans marked yet. Need", totalActiveLoans - markedLoans, "more payments")
+        console.log(
+          "[v0] Not all active loans marked yet. Need",
+          (currentActiveLoans || 0) - markedActiveLoans,
+          "more payments",
+        )
       }
     } catch (err) {
       console.error("[v0] Error in auto-initialization check:", err)
