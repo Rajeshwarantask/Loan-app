@@ -41,9 +41,9 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
   const [error, setError] = useState<string | null>(null)
   const [hasPaymentThisMonth, setHasPaymentThisMonth] = useState(false)
   const [checkingPayment, setCheckingPayment] = useState(false)
-  const [monthlySubscription, setMonthlySubscription] = useState("2100") // added monthly subscription state
+  const [monthlySubscription, setMonthlySubscription] = useState("2100")
+  const [principalRemaining, setPrincipalRemaining] = useState(loan.remaining_balance ?? loan.loan_amount)
 
-  const principalRemaining = loan.remaining_balance ?? loan.loan_amount
   const defaultEmi = 5000
 
   const [emiPayment, setEmiPayment] = useState(defaultEmi.toString())
@@ -67,7 +67,6 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
   }
 
   const handleMonthlySubscriptionChange = (value: string) => {
-    // added handler for monthly subscription
     setMonthlySubscription(value)
   }
 
@@ -76,8 +75,49 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
   useEffect(() => {
     if (open) {
       checkExistingPayment()
+      fetchMostRecentBalance()
     }
   }, [open])
+
+  const fetchMostRecentBalance = async () => {
+    try {
+      const supabase = createClient()
+
+      const { data: paymentData, error: paymentError } = await supabase
+        .from("loan_payments")
+        .select("remaining_balance, period_key")
+        .eq("user_id", loan.user_id)
+        .order("period_year", { ascending: false })
+        .order("period_month", { ascending: false })
+        .limit(10)
+
+      if (paymentError) {
+        console.error("[v0] Error fetching payment balance:", paymentError)
+        setPrincipalRemaining(loan.remaining_balance ?? loan.loan_amount)
+        return
+      }
+
+      if (paymentData && paymentData.length > 0) {
+        const mostRecentPayment = paymentData[0]
+        console.log(
+          "[v0] RecordPayment - using balance from period:",
+          mostRecentPayment.period_key,
+          "balance:",
+          mostRecentPayment.remaining_balance,
+        )
+        setPrincipalRemaining(mostRecentPayment.remaining_balance)
+      } else {
+        console.log(
+          "[v0] RecordPayment - no payment history, using loans table balance:",
+          loan.remaining_balance ?? loan.loan_amount,
+        )
+        setPrincipalRemaining(loan.remaining_balance ?? loan.loan_amount)
+      }
+    } catch (err) {
+      console.error("[v0] Error in fetchMostRecentBalance:", err)
+      setPrincipalRemaining(loan.remaining_balance ?? loan.loan_amount)
+    }
+  }
 
   const checkExistingPayment = async () => {
     setCheckingPayment(true)
@@ -188,7 +228,7 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
         period_year: paymentYear,
         period_key: `${paymentYear}-${String(paymentMonth).padStart(2, "0")}`,
         status: "paid",
-        monthly_subscription: subscription, // added monthly subscription to insert
+        monthly_subscription: subscription,
       })
 
       if (paymentError) {
@@ -231,7 +271,7 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
         const { error: updateLoanError } = await supabase
           .from("loans")
           .update({
-            remaining_balance: newRemainingBalance, // Already includes the new loan
+            remaining_balance: newRemainingBalance,
           })
           .eq("id", loan.id)
 
@@ -258,7 +298,6 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
 
       console.log("[v0] Checking if all loans are marked for period:", periodKey)
 
-      // Get count of all active loans
       const { count: totalActiveLoans, error: activeLoansError } = await supabase
         .from("loans")
         .select("*", { count: "exact", head: true })
@@ -281,7 +320,6 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
         return
       }
 
-      // Count unique loan_ids
       const uniqueLoanIds = new Set(uniqueLoans?.map((p: any) => p.loan_id) || [])
       const markedLoans = uniqueLoanIds.size
 
@@ -306,7 +344,6 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
 
         if (rpcError) {
           console.error("[v0] Auto-initialization error:", rpcError)
-          // Don't throw error, just log it so payment still succeeds
         } else if (data) {
           const result = typeof data === "string" ? JSON.parse(data) : data
           console.log("[v0] Auto-initialization successful:", result)
@@ -317,7 +354,6 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
       }
     } catch (err) {
       console.error("[v0] Error in auto-initialization check:", err)
-      // Don't throw error, just log it so payment still succeeds
     }
   }
 
