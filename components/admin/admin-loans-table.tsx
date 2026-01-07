@@ -44,9 +44,14 @@ interface MonthOpeningBalance {
   [loanId: string]: number
 }
 
+interface MonthClosingBalance {
+  [loanId: string]: number | null
+}
+
 export function AdminLoansTable({ loans }: AdminLoansTableProps) {
   const [recordStatusMap, setRecordStatusMap] = useState<Record<string, InterestStatus>>({})
   const [monthOpeningBalances, setMonthOpeningBalances] = useState<MonthOpeningBalance>({})
+  const [monthClosingBalances, setMonthClosingBalances] = useState<MonthClosingBalance>({})
   const [selectedLoan, setSelectedLoan] = useState<Loan | null>(null)
   const [loanDetailsOpen, setLoanDetailsOpen] = useState(false)
 
@@ -57,8 +62,16 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
       const currentMonth = now.getMonth() + 1
       const currentYear = now.getFullYear()
 
+      let prevMonth = currentMonth - 1
+      let prevYear = currentYear
+      if (prevMonth === 0) {
+        prevMonth = 12
+        prevYear = currentYear - 1
+      }
+
       const statusMap: Record<string, InterestStatus> = {}
       const openingBalances: MonthOpeningBalance = {}
+      const closingBalances: MonthClosingBalance = {}
 
       for (const loan of loans) {
         const firstDay = new Date(currentYear, currentMonth - 1, 1).toISOString().split("T")[0]
@@ -80,10 +93,31 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
           statusMap[loan.id] = { marked: false, monthYear: "" }
         }
 
+        const { data: currentMonthPayment } = await supabase
+          .from("loan_payments")
+          .select("remaining_balance")
+          .eq("user_id", loan.user_id)
+          .eq("period_year", currentYear)
+          .eq("period_month", currentMonth)
+          .order("payment_date", { ascending: false })
+          .limit(1)
+
+        if (currentMonthPayment && currentMonthPayment.length > 0) {
+          closingBalances[loan.id] = currentMonthPayment[0].remaining_balance
+          console.log(
+            "[v0] AdminLoansTable - V" + loan.profiles.member_id,
+            "current month closing balance:",
+            currentMonthPayment[0].remaining_balance,
+          )
+        } else {
+          closingBalances[loan.id] = null
+        }
+
         const { data: allPayments, error } = await supabase
           .from("loan_payments")
           .select("remaining_balance, period_key, period_year, period_month")
           .eq("user_id", loan.user_id)
+          .or(`period_year.lt.${currentYear},and(period_year.eq.${currentYear},period_month.lt.${currentMonth})`)
           .order("period_year", { ascending: false })
           .order("period_month", { ascending: false })
           .order("payment_date", { ascending: false })
@@ -91,7 +125,7 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
 
         console.log(
           "[v0] AdminLoansTable - V" + loan.profiles.member_id,
-          "fetched payments:",
+          "fetched previous payments:",
           allPayments?.length || 0,
           "error:",
           error,
@@ -105,36 +139,38 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
             return monthB - monthA
           })
 
-          console.log("[v0] AdminLoansTable - V" + loan.profiles.member_id, "unique periods:", uniquePeriods)
+          console.log("[v0] AdminLoansTable - V" + loan.profiles.member_id, "previous periods:", uniquePeriods)
 
           if (uniquePeriods.length > 0) {
-            const mostRecentPeriod = uniquePeriods[0]
-            const mostRecentPayment = allPayments.find((p) => p.period_key === mostRecentPeriod)
+            const mostRecentPreviousPeriod = uniquePeriods[0]
+            const previousMonthPayment = allPayments.find((p) => p.period_key === mostRecentPreviousPeriod)
 
-            if (mostRecentPayment) {
-              openingBalances[loan.id] = mostRecentPayment.remaining_balance
+            if (previousMonthPayment) {
+              openingBalances[loan.id] = previousMonthPayment.remaining_balance
               console.log(
                 "[v0] AdminLoansTable - V" + loan.profiles.member_id,
-                "using most recent period",
-                mostRecentPeriod,
-                "balance:",
-                mostRecentPayment.remaining_balance,
+                "using previous month",
+                mostRecentPreviousPeriod,
+                "closing balance as opening:",
+                previousMonthPayment.remaining_balance,
               )
             }
           }
         } else {
-          openingBalances[loan.id] = loan.remaining_balance ?? loan.loan_amount
+          openingBalances[loan.id] = loan.loan_amount
           console.log(
             "[v0] AdminLoansTable - V" + loan.profiles.member_id,
-            "no payment history found, using loans table:",
-            loan.remaining_balance ?? loan.loan_amount,
+            "no payment history found, using loan_amount:",
+            loan.loan_amount,
           )
         }
       }
 
       console.log("[v0] AdminLoansTable - final openingBalances:", openingBalances)
+      console.log("[v0] AdminLoansTable - final closingBalances:", closingBalances)
       setRecordStatusMap(statusMap)
       setMonthOpeningBalances(openingBalances)
+      setMonthClosingBalances(closingBalances)
     }
 
     if (loans.length > 0) {
@@ -162,7 +198,7 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
             const recordStatus = recordStatusMap[loan.id]
             const currentBalance = monthOpeningBalances[loan.id] ?? loan.loan_amount
             const totalLoan = currentBalance
-            const principalRemaining = currentBalance
+            const principalRemaining = monthClosingBalances[loan.id] ?? currentBalance
 
             return (
               <TableRow key={loan.id}>
@@ -237,7 +273,7 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
                               <div>
                                 <div className="text-sm font-medium text-muted-foreground">Principal Remaining</div>
                                 <div className="text-lg font-bold">
-                                  {formatCurrency(monthOpeningBalances[selectedLoan.id] ?? selectedLoan.loan_amount)}
+                                  {formatCurrency(monthClosingBalances[selectedLoan.id] ?? selectedLoan.loan_amount)}
                                 </div>
                               </div>
                               <div>
@@ -249,7 +285,7 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
                                 <div className="font-semibold">
                                   {formatCurrency(
                                     Math.round(
-                                      ((monthOpeningBalances[selectedLoan.id] ?? selectedLoan.loan_amount) *
+                                      ((monthClosingBalances[selectedLoan.id] ?? selectedLoan.loan_amount) *
                                         selectedLoan.interest_rate) /
                                         100,
                                     ),
