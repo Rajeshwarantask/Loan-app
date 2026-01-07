@@ -160,8 +160,9 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
         <TableBody>
           {loans.map((loan) => {
             const recordStatus = recordStatusMap[loan.id]
-            const totalLoan = monthOpeningBalances[loan.id] ?? loan.loan_amount
-            const principalRemaining = loan.remaining_balance ?? loan.loan_amount
+            const currentBalance = monthOpeningBalances[loan.id] ?? loan.loan_amount
+            const totalLoan = currentBalance
+            const principalRemaining = currentBalance
 
             return (
               <TableRow key={loan.id}>
@@ -236,7 +237,7 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
                               <div>
                                 <div className="text-sm font-medium text-muted-foreground">Principal Remaining</div>
                                 <div className="text-lg font-bold">
-                                  {formatCurrency(selectedLoan.remaining_balance ?? selectedLoan.loan_amount)}
+                                  {formatCurrency(monthOpeningBalances[selectedLoan.id] ?? selectedLoan.loan_amount)}
                                 </div>
                               </div>
                               <div>
@@ -248,7 +249,7 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
                                 <div className="font-semibold">
                                   {formatCurrency(
                                     Math.round(
-                                      ((selectedLoan.remaining_balance ?? selectedLoan.loan_amount) *
+                                      ((monthOpeningBalances[selectedLoan.id] ?? selectedLoan.loan_amount) *
                                         selectedLoan.interest_rate) /
                                         100,
                                     ),
