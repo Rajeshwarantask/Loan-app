@@ -15,7 +15,6 @@ import {
   CreditCard,
   ClipboardList,
   Calendar,
-  Sliders,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { UserRole } from "@/lib/types"
@@ -50,7 +49,6 @@ export function MobileNav({ role, userName }: MobileNavProps) {
     { href: "/admin/requests", label: "Loan Requests", icon: ClipboardList },
     { href: "/admin/cash-bill", label: "Cash Bill", icon: FileText },
     { href: "/admin/notices", label: "Manage Notices", icon: Bell },
-    { href: "/admin/bulk-settings", label: "Bulk Settings", icon: Sliders }, // Added Bulk Settings link for mobile admin navigation
     { href: "/calculator", label: "Calculator", icon: Calculator },
     { href: "/contact", label: "Contact", icon: Phone },
     { href: "/settings", label: "Profile", icon: User },

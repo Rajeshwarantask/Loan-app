@@ -12,7 +12,6 @@ import {
   DollarSign,
   MessageSquare,
   Calendar,
-  Sliders,
   RotateCcw,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -44,7 +43,6 @@ export function Sidebar({ role, userName }: SidebarProps) {
     { href: "/admin/requests", label: "Loan Requests", icon: DollarSign },
     { href: "/admin/cash-bill", label: "Cash Bill", icon: FileText },
     { href: "/admin/notices", label: "Manage Notices", icon: Bell },
-    { href: "/admin/bulk-settings", label: "Bulk Settings", icon: Sliders },
     { href: "/calculator", label: "Calculator", icon: Calculator },
   ]
 

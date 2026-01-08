@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Plus } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
+import { v4 as uuidv4 } from "uuid"
 
 interface AddLoanDialogProps {
   users: Array<{ id: string; full_name: string; email: string; member_id: string }>
@@ -42,6 +43,8 @@ export function AddLoanDialog({ users }: AddLoanDialogProps) {
     const interestRate = formData.get("interestRate") as string
     const purpose = formData.get("purpose") as string
 
+    console.log("[v0] Add loan form submitted:", { userId, amount, interestRate, purpose })
+
     const principal = Number.parseFloat(amount)
     if (principal < 10000) {
       setError("Loan amount must be at least ₹10,000")
@@ -56,6 +59,8 @@ export function AddLoanDialog({ users }: AddLoanDialogProps) {
       return
     }
 
+    console.log("[v0] Selected user:", selectedUser)
+
     try {
       const supabase = createClient()
 
@@ -63,37 +68,46 @@ export function AddLoanDialog({ users }: AddLoanDialogProps) {
         data: { user },
       } = await supabase.auth.getUser()
 
+      console.log("[v0] Current user:", user?.id)
+
       const { data: existingLoans, error: checkError } = await supabase
         .from("loans")
-        .select("id, loan_amount, member_id")
+        .select("id, loan_amount, remaining_balance, member_id")
         .eq("user_id", userId)
         .eq("status", "active")
-        .single()
+        .maybeSingle()
 
-      if (checkError && checkError.code !== "PGRST116") {
+      console.log("[v0] Existing loans check:", { existingLoans, checkError })
+
+      if (checkError) {
+        console.error("[v0] Error checking existing loans:", checkError)
         throw checkError
       }
 
       if (existingLoans) {
-        const { data: currentLoan, error: fetchError } = await supabase
-          .from("loans")
-          .select("remaining_balance, loan_amount")
-          .eq("id", existingLoans.id)
-          .single()
+        // Top-up existing loan
+        console.log("[v0] Top-up existing loan:", existingLoans.id)
 
-        if (fetchError) throw fetchError
-
-        const currentBalance = currentLoan.remaining_balance ?? currentLoan.loan_amount
+        const currentBalance = existingLoans.remaining_balance ?? existingLoans.loan_amount
 
         const today = new Date()
+        const periodKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`
+
+        console.log("[v0] Adding to additional_loan table:", {
+          user_id: userId,
+          loan_id: existingLoans.id,
+          amount: principal,
+          period_key: periodKey,
+        })
+
         const { error: additionalError } = await supabase.from("additional_loan").insert({
           user_id: userId,
-          member_id: existingLoans.member_id,
+          member_id: existingLoans.member_id || selectedUser.member_id,
           loan_id: existingLoans.id,
           additional_loan_amount: principal,
           period_year: today.getFullYear(),
           period_month: today.getMonth() + 1,
-          period_key: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`,
+          period_key: periodKey,
         })
 
         if (additionalError) {
@@ -102,6 +116,13 @@ export function AddLoanDialog({ users }: AddLoanDialogProps) {
         }
 
         const newTotalAmount = currentBalance + principal
+
+        console.log("[v0] Updating loan:", {
+          id: existingLoans.id,
+          newTotalAmount,
+          currentBalance,
+        })
+
         const { error: updateError } = await supabase
           .from("loans")
           .update({
@@ -114,23 +135,31 @@ export function AddLoanDialog({ users }: AddLoanDialogProps) {
           console.error("[v0] Loan update error:", updateError)
           throw updateError
         }
+
+        console.log("[v0] Loan top-up successful")
       } else {
+        console.log("[v0] Creating new loan for user:", userId)
+
+        // Generate a UUID for the loan
+        const loanId = uuidv4()
+
         const { error: loanError } = await supabase.from("loans").insert({
+          id: loanId,
           user_id: userId,
           member_id: selectedUser.member_id,
           loan_amount: principal,
           interest_rate: Number.parseFloat(interestRate),
           remaining_balance: principal,
-          purpose: purpose || null,
-          approved_by: user?.id || null,
           status: "active",
-          payment_date: new Date().toISOString(),
+          approved_by: user?.id || null,
         })
 
         if (loanError) {
           console.error("[v0] Loan creation error:", loanError)
           throw loanError
         }
+
+        console.log("[v0] New loan created successfully")
       }
 
       setOpen(false)
