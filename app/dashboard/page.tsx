@@ -5,6 +5,7 @@ import { MobileNav } from "@/components/layout/mobile-nav"
 import { DashboardStats } from "@/components/dashboard/dashboard-stats"
 import { LoanOverview } from "@/components/dashboard/loan-overview"
 import { RecentNotices } from "@/components/dashboard/recent-notices"
+import { CollectionStatsCharts } from "@/components/dashboard/collection-stats-charts"
 
 export const revalidate = 0
 export const dynamic = "force-dynamic"
@@ -39,14 +40,21 @@ export default async function DashboardPage() {
 
           <DashboardStats userId={user.id} role={profile.role} />
 
-          <div className="grid gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2">
+          {profile.role === "admin" ? (
+            <>
               <LoanOverview userId={user.id} role={profile.role} />
+              <CollectionStatsCharts role={profile.role} />
+            </>
+          ) : (
+            <div className="grid gap-6 lg:grid-cols-3">
+              <div className="lg:col-span-2">
+                <LoanOverview userId={user.id} role={profile.role} />
+              </div>
+              <div className="lg:col-span-1">
+                <RecentNotices />
+              </div>
             </div>
-            <div className="lg:col-span-1">
-              <RecentNotices />
-            </div>
-          </div>
+          )}
         </div>
       </main>
 

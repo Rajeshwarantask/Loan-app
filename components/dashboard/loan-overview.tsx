@@ -19,31 +19,41 @@ export function LoanOverview({ userId, role }: LoanOverviewProps) {
 
   useEffect(() => {
     async function fetchData() {
-      console.log("[v0] LoanOverview - userId:", userId, "role:", role)
       const supabase = createClient()
 
-      const { data: loans, error: loansError } = await supabase
-        .from("loans")
-        .select("loan_amount, remaining_balance, status")
-        .eq("user_id", userId)
-      console.log("[v0] LoanOverview - loans data:", loans, "error:", loansError)
+      let loansQuery = supabase.from("loans").select("loan_amount, user_id, id, status")
 
-      const { data: payments, error: paymentsError } = await supabase
+      let paymentsQuery = supabase
         .from("loan_payments")
-        .select("interest_paid, principal_paid, remaining_balance, status")
-        .eq("user_id", userId)
-      console.log("[v0] LoanOverview - payments data:", payments, "error:", paymentsError)
+        .select("interest_paid, remaining_balance, loan_id, created_at")
+        .order("created_at", { ascending: false })
+
+      // Only filter by user_id for non-admin users
+      if (role !== "admin") {
+        loansQuery = loansQuery.eq("user_id", userId)
+        paymentsQuery = paymentsQuery.eq("user_id", userId)
+      }
+
+      const { data: loans } = await loansQuery
+      const { data: payments } = await paymentsQuery
 
       const totalLoanTaken = loans?.reduce((sum, loan) => sum + Number(loan.loan_amount), 0) || 0
 
       const totalInterestPaid = payments?.reduce((sum, payment) => sum + Number(payment.interest_paid), 0) || 0
 
-      const pendingBalance =
-        loans
-          ?.filter((loan) => loan.status === "active")
-          .reduce((sum, loan) => sum + Number(loan.remaining_balance), 0) || 0
+      const activeLoans = loans?.filter((loan) => loan.status === "active") || []
+      let pendingBalance = 0
 
-      console.log("[v0] LoanOverview - calculated stats:", { totalLoanTaken, totalInterestPaid, pendingBalance })
+      // For each active loan, get the latest payment record's remaining_balance
+      for (const loan of activeLoans) {
+        const latestPayment = payments?.find((payment) => payment.loan_id === loan.id)
+        if (latestPayment) {
+          pendingBalance += Number(latestPayment.remaining_balance)
+        } else {
+          // If no payment record exists yet, use the loan amount as pending
+          pendingBalance += Number(loan.loan_amount)
+        }
+      }
 
       setStats({ totalLoanTaken, totalInterestPaid, pendingBalance })
 
@@ -53,13 +63,12 @@ export function LoanOverview({ userId, role }: LoanOverviewProps) {
         { name: "Pending", value: pendingBalance, color: "#f97316" },
       ].filter((item) => item.value > 0)
 
-      console.log("[v0] LoanOverview - chart data:", data)
       setChartData(data)
       setIsLoading(false)
     }
 
     fetchData()
-  }, [userId])
+  }, [userId, role])
 
   return (
     <Card>
