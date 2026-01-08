@@ -42,8 +42,8 @@ export default async function DashboardPage() {
 
           {profile.role === "admin" ? (
             <>
-              <LoanOverview userId={user.id} role={profile.role} />
               <CollectionStatsCharts role={profile.role} />
+              <LoanOverview userId={user.id} role={profile.role} />
             </>
           ) : (
             <div className="grid gap-6 lg:grid-cols-3">
