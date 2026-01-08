@@ -71,6 +71,7 @@ export function MonthlyRecordTable({ records, monthYear }: MonthlyRecordTablePro
             <TableHead className="text-right w-[90px] whitespace-normal">Total Loan Outstanding</TableHead>
             <TableHead className="text-right w-[90px] whitespace-normal">Monthly Interest Income</TableHead>
             <TableHead className="text-right w-[90px] whitespace-normal">Monthly Installment Income</TableHead>
+            <TableHead className="text-right w-[90px] whitespace-normal">Monthly Subscription</TableHead>
             <TableHead className="text-right w-[80px] whitespace-normal">Penalty Income</TableHead>
             <TableHead className="text-right w-[90px] whitespace-normal">Total Income (Current Month)</TableHead>
             <TableHead className="text-right w-[90px] whitespace-normal">Previous Month Total Income</TableHead>
@@ -86,7 +87,7 @@ export function MonthlyRecordTable({ records, monthYear }: MonthlyRecordTablePro
         <TableBody>
           {sortedRecords.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={18} className="text-center py-8 text-muted-foreground">
+              <TableCell colSpan={19} className="text-center py-8 text-muted-foreground">
                 No records found for this month
               </TableCell>
             </TableRow>
@@ -109,6 +110,7 @@ export function MonthlyRecordTable({ records, monthYear }: MonthlyRecordTablePro
                 <TableCell className="text-right px-2 md:px-4">
                   {formatCurrency(record.monthly_installment_income)}
                 </TableCell>
+                <TableCell className="text-right px-2 md:px-4">{formatCurrency(record.monthly_subscription)}</TableCell>
                 <TableCell className="text-right px-2 md:px-4">{formatCurrency(record.penalty)}</TableCell>
                 <TableCell className="text-right font-medium px-2 md:px-4">
                   {formatCurrency(record.total_income_current_month)}

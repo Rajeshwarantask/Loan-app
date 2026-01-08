@@ -67,6 +67,7 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
       const now = new Date()
       const currentMonth = now.getMonth() + 1
       const currentYear = now.getFullYear()
+      const currentPeriodKey = `${currentYear}-${String(currentMonth).padStart(2, "0")}`
 
       let prevMonth = currentMonth - 1
       let prevYear = currentYear
@@ -79,101 +80,46 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
       const openingBalances: MonthOpeningBalance = {}
       const closingBalances: MonthClosingBalance = {}
 
-      for (const loan of loans) {
-        const firstDay = new Date(currentYear, currentMonth - 1, 1).toISOString().split("T")[0]
-        const lastDay = new Date(currentYear, currentMonth, 0).toISOString().split("T")[0]
-
-        const { data: payments } = await supabase
+      const paymentPromises = loans.map(async (loan) => {
+        const { data: currentPayment } = await supabase
           .from("loan_payments")
-          .select("payment_date")
+          .select("payment_date, remaining_balance")
           .eq("loan_id", loan.id)
-          .gte("payment_date", firstDay)
-          .lte("payment_date", lastDay)
+          .eq("period_key", currentPeriodKey)
           .limit(1)
+          .single()
 
-        if (payments && payments.length > 0) {
-          const paymentDate = new Date(payments[0].payment_date)
+        if (currentPayment) {
+          const paymentDate = new Date(currentPayment.payment_date)
           const monthYear = paymentDate.toLocaleDateString("en-US", { month: "short", year: "numeric" })
           statusMap[loan.id] = { marked: true, monthYear }
+          closingBalances[loan.id] = currentPayment.remaining_balance
         } else {
           statusMap[loan.id] = { marked: false, monthYear: "" }
-        }
-
-        const { data: currentMonthPayment } = await supabase
-          .from("loan_payments")
-          .select("remaining_balance")
-          .eq("user_id", loan.user_id)
-          .eq("period_year", currentYear)
-          .eq("period_month", currentMonth)
-          .order("payment_date", { ascending: false })
-          .limit(1)
-
-        if (currentMonthPayment && currentMonthPayment.length > 0) {
-          closingBalances[loan.id] = currentMonthPayment[0].remaining_balance
-          console.log(
-            "[v0] AdminLoansTable - V" + loan.profiles.member_id,
-            "current month closing balance:",
-            currentMonthPayment[0].remaining_balance,
-          )
-        } else {
           closingBalances[loan.id] = null
         }
 
-        const { data: allPayments, error } = await supabase
+        const { data: previousPayments } = await supabase
           .from("loan_payments")
-          .select("remaining_balance, period_key, period_year, period_month")
+          .select("remaining_balance, period_key")
           .eq("user_id", loan.user_id)
           .or(`period_year.lt.${currentYear},and(period_year.eq.${currentYear},period_month.lt.${currentMonth})`)
           .order("period_year", { ascending: false })
           .order("period_month", { ascending: false })
-          .order("payment_date", { ascending: false })
-          .limit(20)
+          .limit(1)
+          .single()
 
-        console.log(
-          "[v0] AdminLoansTable - V" + loan.profiles.member_id,
-          "fetched previous payments:",
-          allPayments?.length || 0,
-          "error:",
-          error,
-        )
-
-        if (allPayments && allPayments.length > 0) {
-          const uniquePeriods = Array.from(new Set(allPayments.map((p) => p.period_key))).sort((a, b) => {
-            const [yearA, monthA] = a.split("-").map(Number)
-            const [yearB, monthB] = b.split("-").map(Number)
-            if (yearA !== yearB) return yearB - yearA
-            return monthB - monthA
-          })
-
-          console.log("[v0] AdminLoansTable - V" + loan.profiles.member_id, "previous periods:", uniquePeriods)
-
-          if (uniquePeriods.length > 0) {
-            const mostRecentPreviousPeriod = uniquePeriods[0]
-            const previousMonthPayment = allPayments.find((p) => p.period_key === mostRecentPreviousPeriod)
-
-            if (previousMonthPayment) {
-              openingBalances[loan.id] = previousMonthPayment.remaining_balance
-              console.log(
-                "[v0] AdminLoansTable - V" + loan.profiles.member_id,
-                "using previous month",
-                mostRecentPreviousPeriod,
-                "closing balance as opening:",
-                previousMonthPayment.remaining_balance,
-              )
-            }
-          }
+        if (previousPayments) {
+          openingBalances[loan.id] = previousPayments.remaining_balance
         } else {
           openingBalances[loan.id] = loan.loan_amount
-          console.log(
-            "[v0] AdminLoansTable - V" + loan.profiles.member_id,
-            "no payment history found, using loan_amount:",
-            loan.loan_amount,
-          )
         }
-      }
 
-      console.log("[v0] AdminLoansTable - final openingBalances:", openingBalances)
-      console.log("[v0] AdminLoansTable - final closingBalances:", closingBalances)
+        return { loanId: loan.id, status: statusMap[loan.id] }
+      })
+
+      await Promise.all(paymentPromises)
+
       setRecordStatusMap(statusMap)
       setMonthOpeningBalances(openingBalances)
       setMonthClosingBalances(closingBalances)

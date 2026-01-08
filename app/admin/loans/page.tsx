@@ -40,7 +40,11 @@ export default async function AdminLoansPage() {
       member_name: profiles?.find((p) => p.id === loan.user_id)?.full_name,
     })) || []
 
-  const { data: users } = await supabase.from("profiles").select("id, full_name, email, member_id").order("full_name")
+  const { data: users } = await supabase
+    .from("profiles")
+    .select("id, full_name, email, member_id")
+    .not("member_id", "is", null)
+    .order("full_name")
 
   return (
     <div className="flex h-screen overflow-hidden">

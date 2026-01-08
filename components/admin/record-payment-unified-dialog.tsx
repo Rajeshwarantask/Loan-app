@@ -300,7 +300,7 @@ export function RecordPaymentUnifiedDialog({
     try {
       const periodKey = `${paymentYear}-${String(paymentMonth).padStart(2, "0")}`
 
-      console.log("[v0] Checking if all loans are marked for period:", periodKey)
+      console.log("[v0] Checking if all payments are recorded for period:", periodKey)
 
       const { count: currentActiveLoans, error: activeLoansError } = await supabase
         .from("loans")
@@ -312,11 +312,34 @@ export function RecordPaymentUnifiedDialog({
         return
       }
 
-      console.log("[v0] Current active loans (excluding completed):", currentActiveLoans)
+      const { data: allUsersData, error: allUsersError } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("role", "member")
+
+      if (allUsersError) {
+        console.error("[v0] Error counting all users:", allUsersError)
+        return
+      }
+
+      const { data: usersWithLoansData, error: usersWithLoansError } = await supabase
+        .from("loans")
+        .select("user_id")
+        .eq("status", "active")
+
+      if (usersWithLoansError) {
+        console.error("[v0] Error counting users with loans:", usersWithLoansError)
+        return
+      }
+
+      const usersWithActiveLoans = new Set(usersWithLoansData?.map((l: any) => l.user_id) || [])
+      const subscriptionOnlyUsers = allUsersData?.filter((user: any) => !usersWithActiveLoans.has(user.id)).length || 0
+
+      const totalUsersNeedingPayment = (currentActiveLoans || 0) + subscriptionOnlyUsers
 
       const { data: paymentsThisPeriod, error: paymentsError } = await supabase
         .from("loan_payments")
-        .select("loan_id")
+        .select("user_id")
         .eq("period_key", periodKey)
 
       if (paymentsError) {
@@ -329,24 +352,21 @@ export function RecordPaymentUnifiedDialog({
         return
       }
 
-      const uniqueLoanIds = [...new Set(paymentsThisPeriod.map((p: any) => p.loan_id))]
+      const uniqueUsersPaid = new Set(paymentsThisPeriod.map((p: any) => p.user_id))
+      const totalPaymentsRecorded = uniqueUsersPaid.size
 
-      const { data: activeLoansWithPayments, error: activeLoansWithPaymentsError } = await supabase
-        .from("loans")
-        .select("id")
-        .in("id", uniqueLoanIds)
-        .eq("status", "active")
+      console.log(
+        "[v0] Active loans:",
+        currentActiveLoans,
+        "Subscription-only users:",
+        subscriptionOnlyUsers,
+        "Total users needing payment:",
+        totalUsersNeedingPayment,
+        "Total payments recorded:",
+        totalPaymentsRecorded,
+      )
 
-      if (activeLoansWithPaymentsError) {
-        console.error("[v0] Error checking active loans with payments:", activeLoansWithPaymentsError)
-        return
-      }
-
-      const markedActiveLoans = activeLoansWithPayments?.length || 0
-
-      console.log("[v0] Marked active loans:", markedActiveLoans, "Total active loans:", currentActiveLoans)
-
-      if (currentActiveLoans && currentActiveLoans > 0 && markedActiveLoans >= currentActiveLoans) {
+      if (totalUsersNeedingPayment > 0 && totalPaymentsRecorded >= totalUsersNeedingPayment) {
         const {
           data: { user },
         } = await supabase.auth.getUser()
@@ -356,7 +376,10 @@ export function RecordPaymentUnifiedDialog({
           return
         }
 
-        console.log("[v0] All active loans marked! Auto-initializing current month:", periodKey)
+        console.log(
+          "[v0] All payments (active loans + subscription-only) recorded! Auto-initializing month:",
+          periodKey,
+        )
 
         const { data, error: rpcError } = await supabase.rpc("initialize_new_month", {
           p_period_key: periodKey,
@@ -368,14 +391,11 @@ export function RecordPaymentUnifiedDialog({
         } else if (data) {
           const result = typeof data === "string" ? JSON.parse(data) : data
           console.log("[v0] Auto-initialization successful:", result)
-          alert(`All loans have been paid for this month! Successfully initialized ${periodKey}`)
+          alert(`All payments recorded! Successfully initialized ${periodKey}`)
         }
       } else {
-        console.log(
-          "[v0] Not all active loans marked yet. Need",
-          (currentActiveLoans || 0) - markedActiveLoans,
-          "more payments",
-        )
+        const remaining = totalUsersNeedingPayment - totalPaymentsRecorded
+        console.log("[v0] Not all payments recorded yet. Need", remaining > 0 ? remaining : 0, "more payments")
       }
     } catch (err) {
       console.error("[v0] Error in auto-initialization check:", err)

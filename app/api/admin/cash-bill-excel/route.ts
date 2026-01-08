@@ -33,37 +33,55 @@ export async function POST(request: NextRequest) {
 
     const supabase = await createClient()
 
-    let loansQuery = supabase
-      .from("loans")
-      .select("user_id, loan_amount, remaining_balance, interest_rate, status")
-      .eq("status", "active")
+    const currentPeriodKey = monthYear || new Date().toISOString().slice(0, 7)
+
+    // First, get users who made payments in the current period (includes completed loans and subscription-only)
+    let paymentsQuery = supabase.from("loan_payments").select("user_id").eq("period_key", currentPeriodKey)
 
     if (selectedUser) {
       console.log("[v0] Filtering by selectedUser:", selectedUser)
-      loansQuery = loansQuery.eq("user_id", selectedUser)
+      paymentsQuery = paymentsQuery.eq("user_id", selectedUser)
     }
 
-    const { data: loans, error: loansError } = await loansQuery
+    const { data: paymentsThisPeriod, error: paymentsError } = await paymentsQuery
 
-    console.log("[v0] Active loans found:", loans?.length || 0)
+    if (paymentsError) {
+      console.error("[v0] Error fetching payment records:", paymentsError.message)
+      return NextResponse.json(
+        { error: "Failed to fetch payment data", details: paymentsError.message },
+        { status: 500 },
+      )
+    }
+
+    // Get unique user IDs from payments
+    const userIdsFromPayments = [...new Set(paymentsThisPeriod?.map((p) => p.user_id) || [])]
+
+    if (userIdsFromPayments.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            "No payment records found for the selected period. Cash bill can only be generated for users who made payments.",
+        },
+        { status: 404 },
+      )
+    }
+
+    const { data: loans, error: loansError } = await supabase
+      .from("loans")
+      .select("user_id, loan_amount, remaining_balance, interest_rate, status")
+      .in("user_id", userIdsFromPayments)
+
+    console.log("[v0] Loans found for users with payments:", loans?.length || 0)
 
     if (loansError) {
       console.error("[v0] Error fetching loans:", loansError.message)
       return NextResponse.json({ error: "Failed to fetch loan data", details: loansError.message }, { status: 500 })
     }
 
-    if (!loans || loans.length === 0) {
-      return NextResponse.json(
-        {
-          error:
-            "No active loans found for the selected criteria. Cash bill can only be generated for users with active loans.",
-        },
-        { status: 404 },
-      )
-    }
+    const loanMap = new Map((loans || []).map((loan) => [loan.user_id, loan]))
 
-    // Get unique user IDs to fetch profile and payment data
-    const userIds = [...new Set(loans.map((r) => r.user_id))]
+    // Get unique user IDs - use all users who made payments
+    const userIds = userIdsFromPayments
 
     // Fetch profiles separately
     const { data: profiles, error: profilesError } = await supabase
@@ -79,43 +97,40 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const currentPeriodKey = monthYear || new Date().toISOString().slice(0, 7)
-
-    const { data: payments, error: paymentsError } = await supabase
+    const { data: payments, error: paymentsDetailError } = await supabase
       .from("loan_payments")
       .select("user_id, monthly_subscription, monthly_emi")
       .in("user_id", userIds)
       .eq("period_key", currentPeriodKey)
 
-    if (paymentsError) {
-      console.error("[v0] Error fetching payments:", paymentsError.message)
+    if (paymentsDetailError) {
+      console.error("[v0] Error fetching payment details:", paymentsDetailError.message)
     }
 
     // Create maps for easy lookup
     const profileMap = new Map(profiles?.map((p) => [p.id, p]) || [])
     const paymentMap = new Map(payments?.map((p) => [p.user_id, p]) || [])
 
-    // Combine the data
-    const users = loans
-      .map((loan) => {
-        const profile = profileMap.get(loan.user_id)
-        const payment = paymentMap.get(loan.user_id)
+    const users = userIds
+      .map((userId) => {
+        const profile = profileMap.get(userId)
+        const payment = paymentMap.get(userId)
+        const loan = loanMap.get(userId) // May be undefined for subscription-only users
 
         return {
-          user_id: loan.user_id,
+          user_id: userId,
           full_name: profile?.full_name || "",
           member_id: profile?.member_id || "",
           name: profile?.full_name || "",
           voucher_no: profile?.member_id || "",
           monthly_installment: payment?.monthly_subscription || 2100,
-          total_loan_balance: loan.remaining_balance || 0,
-          monthly_emi: payment?.monthly_emi || 0,
-          fine: 0, // Can be added later if needed
-          // Additional fields for compatibility
+          total_loan_balance: loan?.remaining_balance || 0, // 0 for subscription-only
+          monthly_emi: payment?.monthly_emi || 0, // 0 for subscription-only
+          fine: 0,
           monthly_installment_amount: payment?.monthly_subscription || 2100,
-          loan_balance: loan.remaining_balance || 0,
-          total_loan: loan.remaining_balance || 0,
-          available_loan: 400000 - (loan.remaining_balance || 0),
+          loan_balance: loan?.remaining_balance || 0,
+          total_loan: loan?.remaining_balance || 0,
+          available_loan: loan ? 400000 - (loan.remaining_balance || 0) : 0, // 0 for subscription-only
         }
       })
       .sort((a, b) => {

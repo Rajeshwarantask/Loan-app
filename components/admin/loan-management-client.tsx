@@ -12,6 +12,7 @@ import { AddLoanDialog } from "./add-loan-dialog"
 import { UserLoanSummaryTable } from "./user-loan-summary-table"
 import { AdditionalLoanHistory } from "./additional-loan-history"
 import { QuickInitializeButton } from "./quick-initialize-button"
+import { UsersWithoutLoansTable } from "./users-without-loans-table"
 import { createClient } from "@/lib/supabase/client"
 
 interface Profile {
@@ -69,6 +70,10 @@ export function LoanManagementClient({ loans, payments, users, additionalLoans }
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [selectedUser, setSelectedUser] = useState<string>("all")
+  const [historySearchTerm, setHistorySearchTerm] = useState("")
+  const [historyMonthFilter, setHistoryMonthFilter] = useState<string>("all")
+  const [topUpSearchTerm, setTopUpSearchTerm] = useState("")
+  const [topUpMonthFilter, setTopUpMonthFilter] = useState<string>("all")
   const [activeTab, setActiveTab] = useState("active-loans")
   const [loanStatusTab, setLoanStatusTab] = useState("active")
   const [isMonthInitialized, setIsMonthInitialized] = useState(false)
@@ -137,15 +142,85 @@ export function LoanManagementClient({ loans, payments, users, additionalLoans }
     return filteredLoans
   }, [filteredLoans, loans, searchTerm, selectedUser])
 
+  const availableMonths = useMemo(() => {
+    const months = new Set<string>()
+    payments.forEach((payment) => {
+      if (payment.month_year) {
+        months.add(payment.month_year)
+      }
+    })
+    return Array.from(months).sort().reverse()
+  }, [payments])
+
+  const availableTopUpMonths = useMemo(() => {
+    const months = new Set<string>()
+    additionalLoans.forEach((loan) => {
+      if (loan.period_key) {
+        months.add(loan.period_key)
+      }
+    })
+    return Array.from(months).sort().reverse()
+  }, [additionalLoans])
+
   const filteredPayments = useMemo(() => {
-    if (selectedUser === "all") return payments
-    return payments.filter((p) => p.user_id === selectedUser)
-  }, [payments, selectedUser])
+    let filtered = payments
+
+    // Filter by selected user
+    if (selectedUser !== "all") {
+      filtered = filtered.filter((p) => p.user_id === selectedUser)
+    }
+
+    // Filter by search term
+    if (historySearchTerm) {
+      filtered = filtered.filter((payment) => {
+        const loan = loans.find((l) => l.id === payment.loan_id)
+        const profile = loan?.profiles
+        if (!profile) return false
+
+        return (
+          profile.full_name.toLowerCase().includes(historySearchTerm.toLowerCase()) ||
+          profile.member_id?.toLowerCase().includes(historySearchTerm.toLowerCase()) ||
+          profile.email.toLowerCase().includes(historySearchTerm.toLowerCase())
+        )
+      })
+    }
+
+    // Filter by month
+    if (historyMonthFilter !== "all") {
+      filtered = filtered.filter((p) => p.month_year === historyMonthFilter)
+    }
+
+    return filtered
+  }, [payments, selectedUser, historySearchTerm, historyMonthFilter, loans])
 
   const filteredAdditionalLoans = useMemo(() => {
-    if (selectedUser === "all") return additionalLoans
-    return additionalLoans.filter((al) => al.user_id === selectedUser)
-  }, [additionalLoans, selectedUser])
+    let filtered = additionalLoans
+
+    // Filter by selected user
+    if (selectedUser !== "all") {
+      filtered = filtered.filter((al) => al.user_id === selectedUser)
+    }
+
+    // Filter by search term
+    if (topUpSearchTerm) {
+      filtered = filtered.filter((loan) => {
+        const memberName = loan.member_name || ""
+        const memberId = loan.member_id || ""
+
+        return (
+          memberName.toLowerCase().includes(topUpSearchTerm.toLowerCase()) ||
+          memberId.toLowerCase().includes(topUpSearchTerm.toLowerCase())
+        )
+      })
+    }
+
+    // Filter by month
+    if (topUpMonthFilter !== "all") {
+      filtered = filtered.filter((al) => al.period_key === topUpMonthFilter)
+    }
+
+    return filtered
+  }, [additionalLoans, selectedUser, topUpSearchTerm, topUpMonthFilter])
 
   const sortedUsers = useMemo(() => {
     return [...users].sort((a, b) => {
@@ -156,6 +231,51 @@ export function LoanManagementClient({ loans, payments, users, additionalLoans }
       return numA - numB
     })
   }, [users])
+
+  const usersWithoutLoans = useMemo(() => {
+    // Get current period key
+    const now = new Date()
+    const currentPeriodKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+
+    // Users with active loans
+    const userIdsWithActiveLoans = new Set(loans.filter((loan) => loan.status === "active").map((loan) => loan.user_id))
+
+    // Users who made loan payments (EMI/principal) in current period
+    // Use the period_key from payments table and check for actual loan payment amounts
+    const userIdsWithLoanPaymentsThisMonth = new Set(
+      payments
+        .filter((payment) => {
+          // Check if payment belongs to current period using existing period fields
+          const paymentPeriodKey = payment.month_year || ""
+
+          // If payment has EMI or principal, it's a loan payment (not subscription-only)
+          const hasLoanPayment =
+            (payment.principal_paid && payment.principal_paid > 0) ||
+            (payment.interest_paid && payment.interest_paid > 0)
+
+          return paymentPeriodKey === currentPeriodKey && hasLoanPayment
+        })
+        .map((payment) => payment.user_id),
+    )
+
+    return users
+      .filter((user) => {
+        // Exclude users with active loans
+        if (userIdsWithActiveLoans.has(user.id)) return false
+
+        // Exclude users who made loan payments this month (they already paid subscription with their loan payment)
+        if (userIdsWithLoanPaymentsThisMonth.has(user.id)) return false
+
+        return true
+      })
+      .sort((a, b) => {
+        const memberA = a.member_id || ""
+        const memberB = b.member_id || ""
+        const numA = Number.parseInt(memberA.replace(/\D/g, ""), 10) || 0
+        const numB = Number.parseInt(memberB.replace(/\D/g, ""), 10) || 0
+        return numA - numB
+      })
+  }, [users, loans, payments])
 
   return (
     <div className="container max-w-7xl py-2 md:py-6 px-2 md:px-6 space-y-2 md:space-y-6">
@@ -229,6 +349,14 @@ export function LoanManagementClient({ loans, payments, users, additionalLoans }
               <AdminLoansTable loans={activeLoans} />
             </CardContent>
           </Card>
+
+          {usersWithoutLoans.length > 0 && (
+            <Card>
+              <CardContent className="px-2 md:px-6 py-4">
+                <UsersWithoutLoansTable users={usersWithoutLoans} />
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="completed-loans" className="space-y-2 md:space-y-4">
@@ -282,24 +410,50 @@ export function LoanManagementClient({ loans, payments, users, additionalLoans }
         {/* Payment History Tab */}
         <TabsContent value="history" className="space-y-2 md:space-y-4">
           <Card>
-            <CardHeader className="px-3 md:px-6 py-3 md:py-6">
-              <CardTitle>Filter by Member</CardTitle>
+            <CardHeader className="pb-3 md:pb-6 px-3 md:px-6 pt-3 md:pt-6">
+              <CardTitle>Filters</CardTitle>
             </CardHeader>
             <CardContent className="px-3 md:px-6">
-              <Select value={selectedUser} onValueChange={setSelectedUser}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a member" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Members</SelectItem>
-                  {sortedUsers.map((user) => (
-                    <SelectItem key={user.id} value={user.id}>
-                      {user.member_id ? `${user.member_id} - ` : ""}
-                      {user.full_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="grid gap-2 md:gap-4 md:grid-cols-3">
+                <div className="relative">
+                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search by name, member ID, or email..."
+                    value={historySearchTerm}
+                    onChange={(e) => setHistorySearchTerm(e.target.value)}
+                    className="pl-8"
+                  />
+                </div>
+
+                <Select value={selectedUser} onValueChange={setSelectedUser}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Filter by member" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Members</SelectItem>
+                    {sortedUsers.map((user) => (
+                      <SelectItem key={user.id} value={user.id}>
+                        {user.member_id ? `${user.member_id} - ` : ""}
+                        {user.full_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={historyMonthFilter} onValueChange={setHistoryMonthFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Filter by month" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Months</SelectItem>
+                    {availableMonths.map((month) => (
+                      <SelectItem key={month} value={month}>
+                        {month}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </CardContent>
           </Card>
 
@@ -321,24 +475,50 @@ export function LoanManagementClient({ loans, payments, users, additionalLoans }
         {/* Additional Loans / Top-Ups Tab */}
         <TabsContent value="additional" className="space-y-2 md:space-y-4">
           <Card>
-            <CardHeader className="px-3 md:px-6 py-3 md:py-6">
-              <CardTitle>Filter by Member</CardTitle>
+            <CardHeader className="pb-3 md:pb-6 px-3 md:px-6 pt-3 md:pt-6">
+              <CardTitle>Filters</CardTitle>
             </CardHeader>
             <CardContent className="px-3 md:px-6">
-              <Select value={selectedUser} onValueChange={setSelectedUser}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a member" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Members</SelectItem>
-                  {sortedUsers.map((user) => (
-                    <SelectItem key={user.id} value={user.id}>
-                      {user.member_id ? `${user.member_id} - ` : ""}
-                      {user.full_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="grid gap-2 md:gap-4 md:grid-cols-3">
+                <div className="relative">
+                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search by name or member ID..."
+                    value={topUpSearchTerm}
+                    onChange={(e) => setTopUpSearchTerm(e.target.value)}
+                    className="pl-8"
+                  />
+                </div>
+
+                <Select value={selectedUser} onValueChange={setSelectedUser}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Filter by member" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Members</SelectItem>
+                    {sortedUsers.map((user) => (
+                      <SelectItem key={user.id} value={user.id}>
+                        {user.member_id ? `${user.member_id} - ` : ""}
+                        {user.full_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={topUpMonthFilter} onValueChange={setTopUpMonthFilter}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Filter by month" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Months</SelectItem>
+                    {availableTopUpMonths.map((month) => (
+                      <SelectItem key={month} value={month}>
+                        {month}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </CardContent>
           </Card>
 
