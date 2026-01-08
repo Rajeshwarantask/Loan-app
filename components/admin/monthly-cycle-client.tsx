@@ -7,8 +7,8 @@ import { Badge } from "@/components/ui/badge"
 import { Calendar, Check } from "lucide-react"
 import { InitializeMonthDialog } from "./initialize-month-dialog"
 import { MonthlyRecordTable } from "./monthly-record-table"
-import { MonthlyReportDialog } from "./monthly-report-dialog"
 import { DeleteMonthDialog } from "./delete-month-dialog"
+import { DownloadMonthlyReportButton } from "./download-monthly-report-button"
 import { formatCurrency } from "@/lib/utils/loan-calculator"
 
 interface Profile {
@@ -126,7 +126,7 @@ export function MonthlyCycleClient({ monthlyRecords, members }: MonthlyCycleClie
           <InitializeMonthDialog members={members} />
           {selectedMonth && currentMonthRecords.length > 0 && (
             <>
-              <MonthlyReportDialog monthYear={selectedMonth} records={currentMonthRecords} />
+              <DownloadMonthlyReportButton monthYear={selectedMonth} records={currentMonthRecords} />
               <DeleteMonthDialog periodKey={selectedMonth} isCurrentMonth={isCurrentMonth} />
             </>
           )}

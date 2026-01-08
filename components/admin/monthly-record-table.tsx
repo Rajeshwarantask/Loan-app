@@ -65,8 +65,7 @@ export function MonthlyRecordTable({ records, monthYear }: MonthlyRecordTablePro
           <TableRow>
             <TableHead className="w-[60px] whitespace-normal">V ID</TableHead>
             <TableHead className="w-[120px] whitespace-normal">Name</TableHead>
-            <TableHead className="text-right w-[90px] whitespace-normal">Monthly Subscription Fee</TableHead>
-            <TableHead className="text-right w-[90px] whitespace-normal">Total Loan Taken</TableHead>
+            <TableHead className="text-right w-[90px] whitespace-normal">Opening Balance</TableHead>
             <TableHead className="text-right w-[90px] whitespace-normal">Additional Principal</TableHead>
             <TableHead className="text-right w-[90px] whitespace-normal">New Loans Issued Last Month</TableHead>
             <TableHead className="text-right w-[90px] whitespace-normal">Total Loan Outstanding</TableHead>
@@ -96,8 +95,9 @@ export function MonthlyRecordTable({ records, monthYear }: MonthlyRecordTablePro
               <TableRow key={record.id}>
                 <TableCell className="font-medium px-2 md:px-4">{record.profiles?.member_id || "N/A"}</TableCell>
                 <TableCell className="px-2 md:px-4">{record.profiles?.full_name || "Unknown"}</TableCell>
-                <TableCell className="text-right px-2 md:px-4">{formatCurrency(record.monthly_subscription)}</TableCell>
-                <TableCell className="text-right px-2 md:px-4">{formatCurrency(record.total_loan_taken)}</TableCell>
+                <TableCell className="text-right px-2 md:px-4">
+                  {formatCurrency(record.previous_month_total_loan_outstanding)}
+                </TableCell>
                 <TableCell className="text-right px-2 md:px-4">{formatCurrency(record.additional_principal)}</TableCell>
                 <TableCell className="text-right px-2 md:px-4">{formatCurrency(record.new_loan_taken)}</TableCell>
                 <TableCell className="text-right font-medium px-2 md:px-4">

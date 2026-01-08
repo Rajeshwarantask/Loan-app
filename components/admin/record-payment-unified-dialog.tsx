@@ -33,9 +33,14 @@ interface RecordPaymentUnifiedDialogProps {
     }
   }
   isMarked?: boolean
+  onPaymentRecorded?: () => void // Add callback prop for triggering refresh
 }
 
-export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPaymentUnifiedDialogProps) {
+export function RecordPaymentUnifiedDialog({
+  loan,
+  isMarked = false,
+  onPaymentRecorded,
+}: RecordPaymentUnifiedDialogProps) {
   const [open, setOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -282,6 +287,7 @@ export function RecordPaymentUnifiedDialog({ loan, isMarked = false }: RecordPay
       await checkAndAutoInitializeNextMonth(supabase, paymentYear, paymentMonth)
 
       setOpen(false)
+      onPaymentRecorded?.()
       router.refresh()
     } catch (err: any) {
       setError(err.message || "An error occurred while recording the payment")

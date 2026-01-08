@@ -54,6 +54,12 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
   const [monthClosingBalances, setMonthClosingBalances] = useState<MonthClosingBalance>({})
   const [selectedLoan, setSelectedLoan] = useState<Loan | null>(null)
   const [loanDetailsOpen, setLoanDetailsOpen] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  const handlePaymentRecorded = () => {
+    console.log("[v0] Payment recorded, refreshing loan data...")
+    setRefreshKey((prev) => prev + 1)
+  }
 
   useEffect(() => {
     const fetchLoanData = async () => {
@@ -176,7 +182,7 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
     if (loans.length > 0) {
       fetchLoanData()
     }
-  }, [loans])
+  }, [loans, refreshKey])
 
   return (
     <div className="overflow-x-auto -mx-2 md:mx-0">
@@ -340,7 +346,11 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
                         )}
                       </DialogContent>
                     </Dialog>
-                    <RecordPaymentUnifiedDialog loan={loan} isMarked={recordStatus?.marked ?? false} />
+                    <RecordPaymentUnifiedDialog
+                      loan={loan}
+                      isMarked={recordStatus?.marked ?? false}
+                      onPaymentRecorded={handlePaymentRecorded}
+                    />
                   </div>
                 </TableCell>
               </TableRow>

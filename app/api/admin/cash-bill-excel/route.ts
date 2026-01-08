@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
 
     let loansQuery = supabase
       .from("loans")
-      .select("user_id, loan_amount, remaining_balance, monthly_emi, interest_rate, status")
+      .select("user_id, loan_amount, remaining_balance, interest_rate, status")
       .eq("status", "active")
 
     if (selectedUser) {
@@ -80,9 +80,10 @@ export async function POST(request: NextRequest) {
     }
 
     const currentPeriodKey = monthYear || new Date().toISOString().slice(0, 7)
+
     const { data: payments, error: paymentsError } = await supabase
       .from("loan_payments")
-      .select("user_id, monthly_subscription")
+      .select("user_id, monthly_subscription, monthly_emi")
       .in("user_id", userIds)
       .eq("period_key", currentPeriodKey)
 
@@ -108,7 +109,7 @@ export async function POST(request: NextRequest) {
           voucher_no: profile?.member_id || "",
           monthly_installment: payment?.monthly_subscription || 2100,
           total_loan_balance: loan.remaining_balance || 0,
-          monthly_emi: loan.monthly_emi || 0,
+          monthly_emi: payment?.monthly_emi || 0,
           fine: 0, // Can be added later if needed
           // Additional fields for compatibility
           monthly_installment_amount: payment?.monthly_subscription || 2100,
@@ -118,9 +119,21 @@ export async function POST(request: NextRequest) {
         }
       })
       .sort((a, b) => {
-        // Sort by member_id
         const aId = a.member_id || ""
         const bId = b.member_id || ""
+
+        // Extract numeric part from member IDs like "V1", "V10", "V44"
+        const aMatch = aId.match(/V[-]?(\d+)/i)
+        const bMatch = bId.match(/V[-]?(\d+)/i)
+
+        if (aMatch && bMatch) {
+          // Both have numeric parts - compare as numbers
+          const aNum = Number.parseInt(aMatch[1], 10)
+          const bNum = Number.parseInt(bMatch[1], 10)
+          return aNum - bNum
+        }
+
+        // Fallback to alphabetical if no numeric part found
         return aId.localeCompare(bId)
       })
 
