@@ -41,9 +41,9 @@ export function LoanCalculatorForm() {
                 type="number"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                placeholder="2000"
+                placeholder="10000"
                 min="0"
-                step="100"
+                step="1000"
               />
             </div>
             <div className="space-y-2">
@@ -65,9 +65,9 @@ export function LoanCalculatorForm() {
                 type="number"
                 value={interestRate}
                 onChange={(e) => setInterestRate(e.target.value)}
-                placeholder="15"
+                placeholder="1.5"
                 min="0"
-                max="100"
+                max="30"
                 step="0.1"
               />
             </div>

@@ -24,11 +24,13 @@ export async function DashboardStats({ userId, role }: DashboardStatsProps) {
 
   if (role === "admin") {
     // Admin stats
-    const { data: loans } = await supabase.from("loans").select("loan_amount, status, created_at")
+    const { data: loans } = await supabase.from("loans").select("loan_amount, remaining_balance, status, created_at")
 
     const { data: payments } = await supabase
       .from("loan_payments")
-      .select("interest_paid, principal_paid, monthly_emi, monthly_subscription, status, period_key, created_at")
+      .select(
+        "interest_paid, principal_paid, additional_principal, monthly_emi, monthly_subscription, status, period_key, created_at",
+      )
 
     const { data: requests } = await supabase.from("loan_requests").select("status")
 
@@ -37,12 +39,8 @@ export async function DashboardStats({ userId, role }: DashboardStatsProps) {
 
     const totalLoansIssued =
       loans?.reduce((sum, loan) => {
-        if ((loan.status === "active" || loan.status === "completed") && loan.created_at) {
-          const loanDate = new Date(loan.created_at)
-          const loanPeriodKey = `${loanDate.getFullYear()}-${String(loanDate.getMonth() + 1).padStart(2, "0")}`
-          if (loanPeriodKey === currentPeriodKey) {
-            return sum + Number(loan.loan_amount)
-          }
+        if (loan.status === "active") {
+          return sum + Number(loan.remaining_balance || 0)
         }
         return sum
       }, 0) || 0
@@ -69,7 +67,7 @@ export async function DashboardStats({ userId, role }: DashboardStatsProps) {
     const totalPrincipalCollected =
       payments?.reduce((sum, payment) => {
         if (payment.status === "paid" && payment.period_key === currentPeriodKey) {
-          return sum + Number(payment.principal_paid || 0)
+          return sum + Number(payment.principal_paid || 0) + Number(payment.additional_principal || 0)
         }
         return sum
       }, 0) || 0

@@ -54,8 +54,8 @@ export function CollectionStatsCharts({ role }: CollectionStatsChartsProps) {
         activeLoanCount > 0 ? Math.round((uniqueUsersWithAdditionalLoan / activeLoanCount) * 100) : 0
 
       setAdditionalLoanData([
-        { name: "With Top-up", value: additionalLoanPercentage, fill: "#0069c7" },
-        { name: "Without Top-up", value: 100 - additionalLoanPercentage, fill: "#fb923c" },
+        { name: "New Loan", value: additionalLoanPercentage, fill: "#0069c7" },
+        { name: "Regular", value: 100 - additionalLoanPercentage, fill: "#fb923c" },
       ])
 
       // Get additional principal stats - count users who paid extra principal
@@ -129,14 +129,14 @@ export function CollectionStatsCharts({ role }: CollectionStatsChartsProps) {
           </div>
           <div className="mt-4 text-center">
             <p className="text-2xl font-bold text-blue-600">{emiData[0]?.value || 0}%</p>
-            <p className="text-sm text-muted-foreground">of expected EMI collected</p>
+            <p className="text-sm text-muted-foreground">of members paid EMI</p>
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Top-up Loans</CardTitle>
+          <CardTitle className="text-base">New Loans</CardTitle>
           <p className="text-sm text-muted-foreground">Members who took additional loans</p>
         </CardHeader>
         <CardContent>
@@ -163,7 +163,7 @@ export function CollectionStatsCharts({ role }: CollectionStatsChartsProps) {
           </div>
           <div className="mt-4 text-center">
             <p className="text-2xl font-bold text-blue-600">{additionalLoanData[0]?.value || 0}%</p>
-            <p className="text-sm text-muted-foreground">of members took top-ups</p>
+            <p className="text-sm text-muted-foreground">of members took New Loans</p>
           </div>
         </CardContent>
       </Card>
@@ -171,7 +171,7 @@ export function CollectionStatsCharts({ role }: CollectionStatsChartsProps) {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Additional Principal</CardTitle>
-          <p className="text-sm text-muted-foreground">Members paying extra principal</p>
+          <p className="text-sm text-muted-foreground">Members reducing principal amount</p>
         </CardHeader>
         <CardContent>
           <div className="h-48">
@@ -197,7 +197,7 @@ export function CollectionStatsCharts({ role }: CollectionStatsChartsProps) {
           </div>
           <div className="mt-4 text-center">
             <p className="text-2xl font-bold text-blue-600">{additionalPrincipalData[0]?.value || 0}%</p>
-            <p className="text-sm text-muted-foreground">paying additional principal</p>
+            <p className="text-sm text-muted-foreground">of members paying additional principal</p>
           </div>
         </CardContent>
       </Card>
