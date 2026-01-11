@@ -33,7 +33,7 @@ interface RecordPaymentUnifiedDialogProps {
     }
   }
   isMarked?: boolean
-  onPaymentRecorded?: () => void // Add callback prop for triggering refresh
+  onPaymentRecorded?: () => void
 }
 
 export function RecordPaymentUnifiedDialog({
@@ -48,6 +48,11 @@ export function RecordPaymentUnifiedDialog({
   const [checkingPayment, setCheckingPayment] = useState(false)
   const [monthlySubscription, setMonthlySubscription] = useState("2100")
   const [principalRemaining, setPrincipalRemaining] = useState(loan.remaining_balance ?? loan.loan_amount)
+  const [penaltyPayment, setPenaltyPayment] = useState("0")
+  const [outstandingPenalty, setOutstandingPenalty] = useState(0)
+  const [missedLastMonthPayment, setMissedLastMonthPayment] = useState(false)
+  const [accumulatedInterest, setAccumulatedInterest] = useState(0)
+  const [accumulatedSubscription, setAccumulatedSubscription] = useState(0)
 
   const defaultEmi = 5000
 
@@ -61,7 +66,8 @@ export function RecordPaymentUnifiedDialog({
   const newLoan = Number(newLoanAmount) || 0
 
   const finalRemainingBalance = Math.max(0, principalRemaining - emi - additionalPrincipal + newLoan)
-  const calculatedMonthlyInterest = Math.max(0, Math.round((finalRemainingBalance * loan.interest_rate) / 100))
+  const currentMonthInterest = Math.max(0, Math.round((finalRemainingBalance * loan.interest_rate) / 100))
+  const totalInterestDue = accumulatedInterest + currentMonthInterest
 
   const handleAdditionalPrincipalChange = (value: string) => {
     setAdditionalPrincipalPayment(value)
@@ -75,14 +81,185 @@ export function RecordPaymentUnifiedDialog({
     setMonthlySubscription(value)
   }
 
+  const handlePenaltyPaymentChange = (value: string) => {
+    const numValue = Number(value) || 0
+    if (numValue <= outstandingPenalty) {
+      setPenaltyPayment(value)
+    } else {
+      setPenaltyPayment(outstandingPenalty.toString())
+    }
+  }
+
   const router = useRouter()
 
   useEffect(() => {
     if (open) {
       checkExistingPayment()
       fetchMostRecentBalance()
+      fetchOutstandingPenalty()
+      checkLastMonthPayment()
+      fetchAccumulatedUnpaidAmounts()
     }
   }, [open])
+
+  const fetchAccumulatedUnpaidAmounts = async () => {
+    try {
+      const supabase = createClient()
+      const now = new Date()
+
+      console.log("[v0] Fetching accumulated unpaid amounts for user:", loan.user_id)
+
+      // Get all payment records for this user, ordered by period
+      const { data: payments, error } = await supabase
+        .from("loan_payments")
+        .select("period_year, period_month, period_key, interest_paid, monthly_subscription, remaining_balance")
+        .eq("user_id", loan.user_id)
+        .order("period_year", { ascending: true })
+        .order("period_month", { ascending: true })
+
+      if (error) {
+        console.error("[v0] Error fetching payment history:", error)
+        setAccumulatedInterest(0)
+        setAccumulatedSubscription(0)
+        return
+      }
+
+      if (!payments || payments.length === 0) {
+        console.log("[v0] No payment history found")
+        setAccumulatedInterest(0)
+        setAccumulatedSubscription(0)
+        return
+      }
+
+      let totalUnpaidInterest = 0
+      let totalUnpaidSubscription = 0
+
+      // Check each previous month for unpaid amounts
+      for (const payment of payments) {
+        // Calculate what the interest should have been for that period
+        const expectedInterest = Math.round((payment.remaining_balance * loan.interest_rate) / 100)
+        const expectedSubscription = 2100
+
+        // Check if interest was not paid
+        if (payment.interest_paid === 0 || payment.interest_paid === null) {
+          totalUnpaidInterest += expectedInterest
+          console.log(`[v0] Unpaid interest found for ${payment.period_key}: ${expectedInterest}`)
+        }
+
+        // Check if subscription was not paid
+        if (payment.monthly_subscription === 0 || payment.monthly_subscription === null) {
+          totalUnpaidSubscription += expectedSubscription
+          console.log(`[v0] Unpaid subscription found for ${payment.period_key}: ${expectedSubscription}`)
+        }
+      }
+
+      console.log("[v0] Total accumulated interest:", totalUnpaidInterest)
+      console.log("[v0] Total accumulated subscription:", totalUnpaidSubscription)
+
+      setAccumulatedInterest(totalUnpaidInterest)
+      setAccumulatedSubscription(totalUnpaidSubscription)
+    } catch (err) {
+      console.error("[v0] Error in fetchAccumulatedUnpaidAmounts:", err)
+      setAccumulatedInterest(0)
+      setAccumulatedSubscription(0)
+    }
+  }
+
+  const checkLastMonthPayment = async () => {
+    try {
+      const supabase = createClient()
+      const now = new Date()
+      const lastMonth = now.getMonth() === 0 ? 12 : now.getMonth()
+      const lastMonthYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()
+      const lastMonthPeriodKey = `${lastMonthYear}-${String(lastMonth).padStart(2, "0")}`
+
+      console.log("[v0] Checking payment for last month:", lastMonthPeriodKey)
+
+      const { data: lastMonthPayment, error } = await supabase
+        .from("loan_payments")
+        .select("id, interest_paid, monthly_subscription")
+        .eq("user_id", loan.user_id)
+        .eq("period_key", lastMonthPeriodKey)
+        .limit(1)
+
+      if (error) {
+        console.error("[v0] Error checking last month payment:", error)
+        setMissedLastMonthPayment(false)
+        return
+      }
+
+      const missedPayment =
+        !lastMonthPayment ||
+        lastMonthPayment.length === 0 ||
+        (lastMonthPayment[0].interest_paid === 0 && lastMonthPayment[0].monthly_subscription === 0)
+
+      setMissedLastMonthPayment(missedPayment)
+
+      if (missedPayment) {
+        console.log("[v0] User missed last month payment, adding 100 penalty")
+        await addAutomaticPenalty(supabase, lastMonthPeriodKey)
+      }
+    } catch (err) {
+      console.error("[v0] Error in checkLastMonthPayment:", err)
+      setMissedLastMonthPayment(false)
+    }
+  }
+
+  const addAutomaticPenalty = async (supabase: any, periodKey: string) => {
+    try {
+      const { data: existingPenalty, error: checkError } = await supabase
+        .from("loan_payments")
+        .select("penalty")
+        .eq("user_id", loan.user_id)
+        .eq("period_key", periodKey)
+        .limit(1)
+
+      if (checkError) {
+        console.error("[v0] Error checking existing penalty:", checkError)
+        return
+      }
+
+      if (existingPenalty && existingPenalty.length > 0 && existingPenalty[0].penalty > 0) {
+        console.log("[v0] Penalty already recorded for this period")
+        return
+      }
+
+      const { data: currentPenalty, error: penaltyError } = await supabase.rpc("get_user_outstanding_penalties", {
+        p_user_id: loan.user_id,
+      })
+
+      if (penaltyError) {
+        console.error("[v0] Error getting current penalty:", penaltyError)
+        return
+      }
+
+      const newOutstandingPenalty = (Number(currentPenalty) || 0) + 100
+      console.log("[v0] New outstanding penalty after missed payment:", newOutstandingPenalty)
+
+      setOutstandingPenalty(newOutstandingPenalty)
+    } catch (err) {
+      console.error("[v0] Error in addAutomaticPenalty:", err)
+    }
+  }
+
+  const fetchOutstandingPenalty = async () => {
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase.rpc("get_user_outstanding_penalties", {
+        p_user_id: loan.user_id,
+      })
+
+      if (error) {
+        console.error("[v0] Error fetching outstanding penalty:", error)
+        setOutstandingPenalty(0)
+      } else {
+        setOutstandingPenalty(Number(data) || 0)
+      }
+    } catch (err) {
+      console.error("[v0] Error in fetchOutstandingPenalty:", err)
+      setOutstandingPenalty(0)
+    }
+  }
 
   const fetchMostRecentBalance = async () => {
     try {
@@ -158,23 +335,29 @@ export function RecordPaymentUnifiedDialog({
     }
 
     const emi = Number(emiPayment)
-    const interest = interestPayment ? Number(interestPayment) : calculatedMonthlyInterest
+    const interest = interestPayment ? Number(interestPayment) : totalInterestDue
     const additionalPrincipal = Number(additionalPrincipalPayment)
     const newLoan = Number(newLoanAmount)
-    const subscription = Number(monthlySubscription) || 2100
+    const subscription = Number(monthlySubscription) || 2100 + accumulatedSubscription
+    const penalty = Number(penaltyPayment) || 0
 
     if (emi <= -1) {
       setError("Monthly EMI is mandatory and must be greater than -1")
       return
     }
 
-    if (interest < 0 || additionalPrincipal < 0 || newLoan < 0 || emi < 0 || subscription < 0) {
+    if (interest < 0 || additionalPrincipal < 0 || newLoan < 0 || emi < 0 || subscription < 0 || penalty < 0) {
       setError("Please enter valid amounts (no negative values)")
       return
     }
 
     if (newLoan > 0 && newLoan < 10000) {
       setError("New loan amount must be at least ₹10,000 or leave it blank")
+      return
+    }
+
+    if (penalty > outstandingPenalty) {
+      setError(`Penalty payment cannot exceed outstanding penalty of ${formatCurrency(outstandingPenalty)}`)
       return
     }
 
@@ -218,11 +401,30 @@ export function RecordPaymentUnifiedDialog({
         period_key: `${paymentYear}-${String(paymentMonth).padStart(2, "0")}`,
         status: "paid",
         monthly_subscription: subscription,
+        penalty: penalty,
       })
 
       if (paymentError) {
         console.error("[v0] Payment insert error:", paymentError)
         throw new Error(paymentError.message || "Failed to record payment")
+      }
+
+      if (penalty > 0) {
+        const { error: penaltyError } = await supabase.from("penalties").insert({
+          user_id: loan.user_id,
+          member_id: loan.member_id || loan.profiles?.member_id,
+          penalty_type: "payment",
+          amount: penalty,
+          reason: "Penalty payment via monthly payment dialog",
+          period_key: `${paymentYear}-${String(paymentMonth).padStart(2, "0")}`,
+          period_month: paymentMonth,
+          period_year: paymentYear,
+          recorded_by: user.id,
+        })
+
+        if (penaltyError) {
+          console.error("[v0] Penalty payment error:", penaltyError)
+        }
       }
 
       const { data: loanData, error: loanError } = await supabase
@@ -441,11 +643,34 @@ export function RecordPaymentUnifiedDialog({
             </div>
             <div className="p-2 md:p-3 bg-orange-50 rounded-lg border border-orange-200">
               <div className="text-[9px] md:text-xs text-muted-foreground mb-1">Interest Due</div>
-              <div className="text-[10px] md:text-sm font-bold text-orange-600">
-                {formatCurrency(calculatedMonthlyInterest)}
-              </div>
+              <div className="text-[10px] md:text-sm font-bold text-orange-600">{formatCurrency(totalInterestDue)}</div>
             </div>
           </div>
+
+          {outstandingPenalty > 0 && (
+            <div className="p-2 md:p-3 bg-red-50 rounded-lg border border-red-200">
+              <div className="text-[9px] md:text-xs text-muted-foreground mb-1">Outstanding Penalty</div>
+              <div className="text-[10px] md:text-sm font-bold text-red-600">{formatCurrency(outstandingPenalty)}</div>
+            </div>
+          )}
+
+          {(accumulatedInterest > 0 || accumulatedSubscription > 0) && (
+            <div className="p-2 md:p-3 bg-yellow-50 rounded-lg border border-yellow-300">
+              <div className="text-[10px] md:text-sm font-semibold text-yellow-800 mb-1">
+                Unpaid Amounts Carried Forward
+              </div>
+              {accumulatedInterest > 0 && (
+                <div className="text-[9px] md:text-xs text-yellow-700">
+                  Previous Interest: {formatCurrency(accumulatedInterest)}
+                </div>
+              )}
+              {accumulatedSubscription > 0 && (
+                <div className="text-[9px] md:text-xs text-yellow-700">
+                  Previous Subscription: {formatCurrency(accumulatedSubscription)}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-2 md:gap-3">
             <div className="space-y-1">
@@ -469,21 +694,23 @@ export function RecordPaymentUnifiedDialog({
 
             <div className="space-y-1">
               <Label htmlFor="interest" className="text-[10px] md:text-xs">
-                Interest Payment
+                Interest Payment {accumulatedInterest > 0 && "(Including Previous)"}
               </Label>
               <Input
                 id="interest"
                 type="number"
                 step="1"
                 min="0"
-                placeholder={calculatedMonthlyInterest.toString()}
-                value={interestPayment || calculatedMonthlyInterest}
+                placeholder={`₹${totalInterestDue}`}
+                value={interestPayment || totalInterestDue}
                 onChange={(e) => setInterestPayment(e.target.value)}
                 className="h-7 md:h-9 text-xs md:text-sm bg-white"
                 disabled={hasPaymentThisMonth}
               />
               <p className="text-[9px] md:text-xs text-muted-foreground">
-                Auto-calculated: {formatCurrency(calculatedMonthlyInterest)}
+                {accumulatedInterest > 0
+                  ? `Previous: ${formatCurrency(accumulatedInterest)} + Current: ${formatCurrency(currentMonthInterest)}`
+                  : `Current: ${formatCurrency(currentMonthInterest)}`}
               </p>
             </div>
           </div>
@@ -529,23 +756,46 @@ export function RecordPaymentUnifiedDialog({
           <div className="grid grid-cols-2 gap-2 md:gap-3">
             <div className="space-y-1">
               <Label htmlFor="monthlySubscription" className="text-[10px] md:text-xs">
-                Monthly Subscription
+                Monthly Subscription {accumulatedSubscription > 0 && "(Including Previous)"}
               </Label>
               <Input
                 id="monthlySubscription"
                 type="number"
                 step="100"
                 min="0"
-                placeholder="₹2100"
+                placeholder={`₹${2100 + accumulatedSubscription}`}
                 value={monthlySubscription}
                 onChange={(e) => handleMonthlySubscriptionChange(e.target.value)}
                 className="h-7 md:h-9 text-xs md:text-sm"
                 disabled={hasPaymentThisMonth}
               />
-              <p className="text-[9px] md:text-xs text-muted-foreground">Monthly contribution amount</p>
+              <p className="text-[9px] md:text-xs text-muted-foreground">
+                {accumulatedSubscription > 0
+                  ? `Previous: ${formatCurrency(accumulatedSubscription)} + Current: ₹2,100`
+                  : "Monthly contribution amount"}
+              </p>
             </div>
 
-            <div></div>
+            <div className="space-y-1">
+              <Label htmlFor="penaltyPayment" className="text-[10px] md:text-xs text-red-600">
+                Penalty Payment {outstandingPenalty > 0 ? "(Required)" : "(Optional)"}
+              </Label>
+              <Input
+                id="penaltyPayment"
+                type="number"
+                step="100"
+                min="0"
+                max={outstandingPenalty}
+                placeholder={outstandingPenalty > 0 ? `₹${outstandingPenalty}` : "₹0"}
+                value={penaltyPayment}
+                onChange={(e) => handlePenaltyPaymentChange(e.target.value)}
+                className="h-7 md:h-9 text-xs md:text-sm border-red-200"
+                disabled={hasPaymentThisMonth || outstandingPenalty === 0}
+              />
+              <p className="text-[9px] md:text-xs text-muted-foreground">
+                {outstandingPenalty > 0 ? `Outstanding: ${formatCurrency(outstandingPenalty)}` : "No penalty due"}
+              </p>
+            </div>
           </div>
 
           {error && (

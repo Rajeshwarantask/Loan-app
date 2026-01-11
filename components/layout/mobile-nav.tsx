@@ -37,7 +37,6 @@ export function MobileNav({ role, userName }: MobileNavProps) {
     { href: "/calculator", label: "Calculator", icon: Calculator },
     { href: "/loans", label: "My Loans", icon: FileText },
     { href: "/request-loan", label: "Request Loan", icon: HandCoins },
-    { href: "/investments", label: "Investment", icon: TrendingUp }, // Added Investment link for users
     { href: "/notices", label: "Notices", icon: Bell },
     { href: "/contact", label: "Contact Admin", icon: Phone },
     { href: "/settings", label: "Profile", icon: User },
@@ -50,7 +49,7 @@ export function MobileNav({ role, userName }: MobileNavProps) {
     { href: "/admin/monthly-cycles", label: "Monthly Cycles", icon: Calendar },
     { href: "/admin/requests", label: "Loan Requests", icon: ClipboardList },
     { href: "/admin/cash-bill", label: "Cash Bill", icon: FileText },
-    { href: "/investments", label: "Investment", icon: TrendingUp }, // Added Investment link for admins
+    { href: "/investments", label: "Investment", icon: TrendingUp },
     { href: "/admin/notices", label: "Manage Notices", icon: Bell },
     { href: "/calculator", label: "Calculator", icon: Calculator },
     { href: "/contact", label: "Contact", icon: Phone },

@@ -10,6 +10,9 @@ import {
   BarChart3,
   Target,
   Clock,
+  CreditCard,
+  TrendingDown,
+  Award,
 } from "lucide-react"
 import { formatCurrency } from "@/lib/utils/loan-calculator"
 import type { UserRole } from "@/lib/types"
@@ -217,98 +220,157 @@ export async function DashboardStats({ userId, role }: DashboardStatsProps) {
     )
   }
 
-  // User stats
+  // User stats - fetch comprehensive payment data
   const { data: loans } = await supabase
     .from("loans")
-    .select("loan_amount, remaining_balance, status, created_at")
+    .select("loan_amount, remaining_balance, status, interest_rate")
     .eq("user_id", userId)
 
   const { data: payments } = await supabase
     .from("loan_payments")
-    .select("interest_paid, remaining_balance, monthly_subscription, status, period_key")
+    .select(
+      "interest_paid, principal_paid, additional_principal, monthly_emi, monthly_subscription, penalty, remaining_balance, status, period_key",
+    )
     .eq("user_id", userId)
 
   const currentDate = new Date()
   const currentPeriodKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`
 
-  const totalLoanTaken = loans?.reduce((sum, loan) => sum + Number(loan.loan_amount), 0) || 0
+  // 1. Total Loan (current month closing balance from latest payment)
+  const latestPayment = payments?.sort((a, b) => {
+    if (b.period_key > a.period_key) return 1
+    if (b.period_key < a.period_key) return -1
+    return 0
+  })[0]
+  const totalLoan = latestPayment ? Number(latestPayment.remaining_balance || 0) : 0
 
-  const totalInterestPaid =
+  // 2. Interest (this month's interest payment)
+  const interestThisMonth =
     payments?.reduce((sum, payment) => {
-      if (payment.status === "paid" && payment.period_key === currentPeriodKey) {
+      if (payment.period_key === currentPeriodKey) {
         return sum + Number(payment.interest_paid || 0)
       }
       return sum
     }, 0) || 0
 
-  const activeLoans = loans?.filter((loan) => loan.status === "active") || []
+  // 3. EMI (total EMI paid - all time)
+  const totalEMI = payments?.reduce((sum, payment) => sum + Number(payment.monthly_emi || 0), 0) || 0
 
-  const pendingBalance =
-    loans?.filter((loan) => loan.status === "active").reduce((sum, loan) => sum + Number(loan.remaining_balance), 0) ||
-    0
+  // 4. Subscription (total subscription paid - all time)
+  const totalSubscription = payments?.reduce((sum, payment) => sum + Number(payment.monthly_subscription || 0), 0) || 0
 
-  const missedPayments = payments?.filter((payment) => payment.status === "missed").length || 0
-
-  const totalSubscriptionPaid =
+  // 5. Principal (total principal paid - all time)
+  const totalPrincipal =
     payments?.reduce((sum, payment) => {
-      if (payment.status === "paid" && payment.period_key === currentPeriodKey) {
-        return sum + Number(payment.monthly_subscription || 0)
-      }
-      return sum
+      return sum + Number(payment.principal_paid || 0) + Number(payment.additional_principal || 0)
     }, 0) || 0
 
+  // 6. Available Loan (subscription * 10 - current loan balance)
+  const availableLoan = Math.max(0, totalSubscription * 10 - totalLoan)
+
+  // 7. Penalty (total penalty paid from loan_payments - all time)
+  const totalPenalty = payments?.reduce((sum, payment) => sum + Number(payment.penalty || 0), 0) || 0
+
+  // 8. Total Earnings/Person (set to 0 for now)
+  const totalEarnings = 0
+
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">Total Loan Taken</CardTitle>
-          <DollarSign className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-semibold">{formatCurrency(totalLoanTaken)}</div>
-        </CardContent>
-      </Card>
+    <>
+      {/* Top row - 4 stats */}
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+        {/* Order: 4, 2, 3, 5 = Subscription, Interest, EMI, Principal */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Subscription</CardTitle>
+            <PiggyBank className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold">{formatCurrency(totalSubscription)}</div>
+            <p className="text-xs text-muted-foreground mt-1">Total paid</p>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">Interest Paid</CardTitle>
-          <TrendingUp className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-semibold">{formatCurrency(totalInterestPaid)}</div>
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Interest</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold">{formatCurrency(interestThisMonth)}</div>
+            <p className="text-xs text-muted-foreground mt-1">This month</p>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">Pending Balance</CardTitle>
-          <AlertCircle className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-semibold">{formatCurrency(pendingBalance)}</div>
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">EMI</CardTitle>
+            <CreditCard className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold">{formatCurrency(totalEMI)}</div>
+            <p className="text-xs text-muted-foreground mt-1">Total paid</p>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">Active Loans</CardTitle>
-          <CheckCircle className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-semibold">{activeLoans.length}</div>
-          {missedPayments > 0 && <p className="text-xs text-red-600 mt-1">{missedPayments} missed payment(s)</p>}
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Principal</CardTitle>
+            <TrendingDown className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold">{formatCurrency(totalPrincipal)}</div>
+            <p className="text-xs text-muted-foreground mt-1">Total paid</p>
+          </CardContent>
+        </Card>
+      </div>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">Total Subscription Paid</CardTitle>
-          <PiggyBank className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-semibold">{formatCurrency(totalSubscriptionPaid)}</div>
-        </CardContent>
-      </Card>
-    </div>
+      {/* Bottom row - 4 stats */}
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+        {/* Order: 1, 8, 6, 7 = Total Loan, Total Earnings, Available Loan, Penalty */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Loan</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold">{formatCurrency(totalLoan)}</div>
+            <p className="text-xs text-muted-foreground mt-1">Current balance</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Earnings</CardTitle>
+            <Award className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold">{formatCurrency(totalEarnings)}</div>
+            <p className="text-xs text-muted-foreground mt-1">Per person</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Available Loan</CardTitle>
+            <Wallet className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold">{formatCurrency(availableLoan)}</div>
+            <p className="text-xs text-muted-foreground mt-1">Can borrow</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Penalty</CardTitle>
+            <AlertCircle className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold">{formatCurrency(totalPenalty)}</div>
+            <p className="text-xs text-muted-foreground mt-1">Total paid</p>
+          </CardContent>
+        </Card>
+      </div>
+    </>
   )
 }

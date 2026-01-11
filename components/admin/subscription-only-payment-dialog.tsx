@@ -38,13 +38,15 @@ export function SubscriptionOnlyPaymentDialog({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [monthlySubscription, setMonthlySubscription] = useState("2100")
+  const [penaltyPayment, setPenaltyPayment] = useState("0")
   const router = useRouter()
 
   const handleSubmit = async () => {
     const subscription = Number(monthlySubscription) || 2100
+    const penalty = Number(penaltyPayment) || 0
 
-    if (subscription < 0) {
-      setError("Please enter a valid subscription amount")
+    if (subscription < 0 || penalty < 0) {
+      setError("Please enter valid amounts (no negative values)")
       return
     }
 
@@ -123,6 +125,7 @@ export function SubscriptionOnlyPaymentDialog({
         status: "paid",
         monthly_subscription: subscription,
         principal_paid: 0,
+        penalty: penalty, // Added penalty field
       })
 
       if (paymentError) {
@@ -294,6 +297,25 @@ export function SubscriptionOnlyPaymentDialog({
               className="h-9 md:h-10 text-sm md:text-base"
             />
             <p className="text-xs text-muted-foreground">Default: {formatCurrency(2100)}</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="penalty" className="text-xs md:text-sm">
+              Penalty Payment (Optional)
+            </Label>
+            <Input
+              id="penalty"
+              type="number"
+              step="100"
+              min="0"
+              placeholder="₹0"
+              value={penaltyPayment}
+              onChange={(e) => setPenaltyPayment(e.target.value)}
+              className="h-9 md:h-10 text-sm md:text-base"
+            />
+            <p className="text-xs text-muted-foreground">
+              Enter penalty amount if user is paying off penalty (e.g., ₹100)
+            </p>
           </div>
 
           {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-600 border border-red-200">{error}</div>}

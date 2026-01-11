@@ -4,7 +4,10 @@ import { Sidebar } from "@/components/layout/sidebar"
 import { MobileNav } from "@/components/layout/mobile-nav"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { format } from "date-fns"
+import Image from "next/image"
+import { Download } from "lucide-react"
 
 export default async function NoticesPage() {
   const supabase = await createClient()
@@ -68,8 +71,33 @@ export default async function NoticesPage() {
                       <span>{format(new Date(notice.created_at), "MMM dd, yyyy")}</span>
                     </div>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="space-y-4">
                     <p className="text-muted-foreground whitespace-pre-wrap">{notice.content}</p>
+
+                    {notice.image_url && (
+                      <div className="space-y-2">
+                        <div className="relative w-full h-64 md:h-96 rounded-lg overflow-hidden border">
+                          <Image
+                            src={notice.image_url || "/placeholder.svg"}
+                            alt={notice.title}
+                            fill
+                            className="object-contain"
+                            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                          />
+                        </div>
+                        <Button variant="outline" size="sm" className="w-full sm:w-auto bg-transparent" asChild>
+                          <a
+                            href={notice.image_url}
+                            download={`notice-${notice.id}-${format(new Date(notice.created_at), "yyyy-MM-dd")}.jpg`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <Download className="h-4 w-4 mr-2" />
+                            Download Image
+                          </a>
+                        </Button>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               ))}
