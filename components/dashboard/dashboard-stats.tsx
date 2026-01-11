@@ -37,6 +37,8 @@ export async function DashboardStats({ userId, role }: DashboardStatsProps) {
 
     const { data: requests } = await supabase.from("loan_requests").select("status")
 
+    const { data: investments } = await supabase.from("investments").select("amount")
+
     const currentDate = new Date()
     const currentPeriodKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`
 
@@ -86,8 +88,11 @@ export async function DashboardStats({ userId, role }: DashboardStatsProps) {
     const totalSubscriptionReceived = currentMonthSubscription
 
     const totalTurnover = totalSubscriptionReceived + totalLoansIssued + currentMonthEmi + totalInterestCollected
-    const investedAmount = 0
+
+    const investedAmount = investments?.reduce((sum, investment) => sum + Number(investment.amount || 0), 0) || 0
+
     const remainingTurnover = totalTurnover - investedAmount
+
     const monthlyInHandClosing = totalLoansIssued + totalInterestCollected
     const cagrRate = 0 // For now
 

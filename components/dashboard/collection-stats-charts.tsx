@@ -15,6 +15,9 @@ export function CollectionStatsCharts({ role }: CollectionStatsChartsProps) {
   const [additionalPrincipalData, setAdditionalPrincipalData] = useState<
     { name: string; value: number; fill: string }[]
   >([])
+  const [emiCount, setEmiCount] = useState({ paid: 0, total: 0 })
+  const [additionalLoanCount, setAdditionalLoanCount] = useState({ count: 0, total: 0 })
+  const [additionalPrincipalCount, setAdditionalPrincipalCount] = useState({ count: 0, total: 0 })
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
@@ -27,7 +30,6 @@ export function CollectionStatsCharts({ role }: CollectionStatsChartsProps) {
       const { data: activeLoans } = await supabase.from("loans").select("id, user_id").eq("status", "active")
 
       const activeLoanCount = activeLoans?.length || 0
-      const expectedEMI = activeLoanCount * 5000
 
       // Get current month EMI collection
       const { data: payments } = await supabase
@@ -35,12 +37,14 @@ export function CollectionStatsCharts({ role }: CollectionStatsChartsProps) {
         .select("monthly_emi, user_id, additional_principal")
         .eq("period_key", currentPeriodKey)
 
-      const collectedEMI = payments?.reduce((sum, p) => sum + Number(p.monthly_emi || 0), 0) || 0
-      const emiPercentage = expectedEMI > 0 ? Math.round((collectedEMI / expectedEMI) * 100) : 0
+      const usersWhoPaidEMI = new Set(payments?.filter((p) => Number(p.monthly_emi || 0) > 0).map((p) => p.user_id))
+        .size
+      const emiPercentage = activeLoanCount > 0 ? Math.round((usersWhoPaidEMI / activeLoanCount) * 100) : 0
 
+      setEmiCount({ paid: usersWhoPaidEMI, total: activeLoanCount })
       setEmiData([
-        { name: "Collected", value: emiPercentage, fill: "#0069c7" },
-        { name: "Pending", value: 100 - emiPercentage, fill: "#fb923c" },
+        { name: "Collected", value: emiPercentage, fill: "#fb923c" },
+        { name: "Pending", value: 100 - emiPercentage, fill: "#7dd3fc" },
       ])
 
       // Get additional loan stats
@@ -53,9 +57,10 @@ export function CollectionStatsCharts({ role }: CollectionStatsChartsProps) {
       const additionalLoanPercentage =
         activeLoanCount > 0 ? Math.round((uniqueUsersWithAdditionalLoan / activeLoanCount) * 100) : 0
 
+      setAdditionalLoanCount({ count: uniqueUsersWithAdditionalLoan, total: activeLoanCount })
       setAdditionalLoanData([
-        { name: "New Loan", value: additionalLoanPercentage, fill: "#0069c7" },
-        { name: "Regular", value: 100 - additionalLoanPercentage, fill: "#fb923c" },
+        { name: "With Top-up", value: additionalLoanPercentage, fill: "#fb923c" },
+        { name: "Without Top-up", value: 100 - additionalLoanPercentage, fill: "#7dd3fc" },
       ])
 
       // Get additional principal stats - count users who paid extra principal
@@ -65,9 +70,10 @@ export function CollectionStatsCharts({ role }: CollectionStatsChartsProps) {
       const additionalPrincipalPercentage =
         activeLoanCount > 0 ? Math.round((usersWithAdditionalPrincipal / activeLoanCount) * 100) : 0
 
+      setAdditionalPrincipalCount({ count: usersWithAdditionalPrincipal, total: activeLoanCount })
       setAdditionalPrincipalData([
-        { name: "Paid Extra", value: additionalPrincipalPercentage, fill: "#0069c7" },
-        { name: "Regular", value: 100 - additionalPrincipalPercentage, fill: "#fb923c" },
+        { name: "Paid Extra", value: additionalPrincipalPercentage, fill: "#fb923c" },
+        { name: "Regular", value: 100 - additionalPrincipalPercentage, fill: "#7dd3fc" },
       ])
 
       setIsLoading(false)
@@ -128,15 +134,17 @@ export function CollectionStatsCharts({ role }: CollectionStatsChartsProps) {
             </ResponsiveContainer>
           </div>
           <div className="mt-4 text-center">
-            <p className="text-2xl font-bold text-blue-600">{emiData[0]?.value || 0}%</p>
-            <p className="text-sm text-muted-foreground">of members paid EMI</p>
+            <p className="text-2xl font-bold text-orange-500">
+              {emiCount.paid} / {emiCount.total}
+            </p>
+            <p className="text-sm text-muted-foreground">members paid EMI</p>
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">New Loans</CardTitle>
+          <CardTitle className="text-base">Top-up Loans</CardTitle>
           <p className="text-sm text-muted-foreground">Members who took additional loans</p>
         </CardHeader>
         <CardContent>
@@ -162,8 +170,10 @@ export function CollectionStatsCharts({ role }: CollectionStatsChartsProps) {
             </ResponsiveContainer>
           </div>
           <div className="mt-4 text-center">
-            <p className="text-2xl font-bold text-blue-600">{additionalLoanData[0]?.value || 0}%</p>
-            <p className="text-sm text-muted-foreground">of members took New Loans</p>
+            <p className="text-2xl font-bold text-orange-500">
+              {additionalLoanCount.count} / {additionalLoanCount.total}
+            </p>
+            <p className="text-sm text-muted-foreground">members took top-up loans</p>
           </div>
         </CardContent>
       </Card>
@@ -196,8 +206,10 @@ export function CollectionStatsCharts({ role }: CollectionStatsChartsProps) {
             </ResponsiveContainer>
           </div>
           <div className="mt-4 text-center">
-            <p className="text-2xl font-bold text-blue-600">{additionalPrincipalData[0]?.value || 0}%</p>
-            <p className="text-sm text-muted-foreground">of members paying additional principal</p>
+            <p className="text-2xl font-bold text-orange-500">
+              {additionalPrincipalCount.count} / {additionalPrincipalCount.total}
+            </p>
+            <p className="text-sm text-muted-foreground">members paying extra principal</p>
           </div>
         </CardContent>
       </Card>

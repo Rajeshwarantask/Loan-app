@@ -68,6 +68,13 @@ export function RecordPaymentUnifiedDialog({
   const finalRemainingBalance = Math.max(0, principalRemaining - emi - additionalPrincipal + newLoan)
   const currentMonthInterest = Math.max(0, Math.round((finalRemainingBalance * loan.interest_rate) / 100))
   const totalInterestDue = accumulatedInterest + currentMonthInterest
+  const totalSubscriptionDue = accumulatedSubscription + 2100
+
+  console.log("[v0] totalSubscriptionDue calculation:", {
+    accumulatedSubscription,
+    current: 2100,
+    total: totalSubscriptionDue,
+  })
 
   const handleAdditionalPrincipalChange = (value: string) => {
     setAdditionalPrincipalPayment(value)
@@ -224,7 +231,7 @@ export function RecordPaymentUnifiedDialog({
         return
       }
 
-      const { data: currentPenalty, error: penaltyError } = await supabase.rpc("get_user_outstanding_penalties", {
+      const { data, error: penaltyError } = await supabase.rpc("get_user_outstanding_penalties", {
         p_user_id: loan.user_id,
       })
 
@@ -233,7 +240,7 @@ export function RecordPaymentUnifiedDialog({
         return
       }
 
-      const newOutstandingPenalty = (Number(currentPenalty) || 0) + 100
+      const newOutstandingPenalty = (Number(data) || 0) + 100
       console.log("[v0] New outstanding penalty after missed payment:", newOutstandingPenalty)
 
       setOutstandingPenalty(newOutstandingPenalty)
@@ -763,8 +770,8 @@ export function RecordPaymentUnifiedDialog({
                 type="number"
                 step="100"
                 min="0"
-                placeholder={`₹${2100 + accumulatedSubscription}`}
-                value={monthlySubscription}
+                placeholder={`₹${totalSubscriptionDue}`}
+                value={accumulatedSubscription > 0 ? monthlySubscription || totalSubscriptionDue : monthlySubscription}
                 onChange={(e) => handleMonthlySubscriptionChange(e.target.value)}
                 className="h-7 md:h-9 text-xs md:text-sm"
                 disabled={hasPaymentThisMonth}
