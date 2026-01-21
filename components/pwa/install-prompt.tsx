@@ -11,102 +11,123 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>
 }
 
+// ✅ FROM OLD FILE (global backup reference)
 let globalDeferredPrompt: BeforeInstallPromptEvent | null = null
 
 export function InstallPrompt() {
   const [showPrompt, setShowPrompt] = useState(false)
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
+  const [deferredPrompt, setDeferredPrompt] =
+    useState<BeforeInstallPromptEvent | null>(null)
+
+  // ✅ NEW (FIX): Track real install readiness
+  const [isInstallReady, setIsInstallReady] = useState(false)
 
   useEffect(() => {
-    console.log("[v0] InstallPrompt mounted")
+    console.log("[PWA] InstallPrompt mounted")
 
+    // ✅ FROM OLD FILE (correct event handling)
     const captureInstallPrompt = (e: Event) => {
-      console.log("[v0] beforeinstallprompt event captured")
+      console.log("[PWA] beforeinstallprompt captured")
       e.preventDefault()
-      globalDeferredPrompt = e as BeforeInstallPromptEvent
-      setDeferredPrompt(e as BeforeInstallPromptEvent)
+
+      const promptEvent = e as BeforeInstallPromptEvent
+      globalDeferredPrompt = promptEvent
+      setDeferredPrompt(promptEvent)
+
+      // ✅ CRITICAL FIX (missing in new file)
+      setIsInstallReady(true)
     }
 
     window.addEventListener("beforeinstallprompt", captureInstallPrompt)
 
-    const checkAuthentication = () => {
-      const hasCookie = document.cookie.includes("sb-access-token") || document.cookie.includes("sb-refresh-token")
-      console.log("[v0] User authenticated:", hasCookie)
-      return hasCookie
-    }
-
+    // ✅ FROM OLD FILE
     const isInstalled =
       window.matchMedia("(display-mode: standalone)").matches ||
       (window.navigator as any).standalone ||
       document.referrer.includes("android-app://")
 
+    // ✅ FROM NEW FILE (7-day dismiss logic – FIXED)
     const dismissedTime = localStorage.getItem("pwa-install-dismissed")
-    // Allow prompt to reappear after 7 days
-    const dismissed = dismissedTime && (Date.now() - parseInt(dismissedTime)) < 7 * 24 * 60 * 60 * 1000
+    const dismissed =
+      dismissedTime !== null &&
+      Date.now() - Number(dismissedTime) < 7 * 24 * 60 * 60 * 1000
 
-    console.log("[v0] PWA Status - Installed:", isInstalled, "Dismissed:", dismissed)
+    const isAuthenticated =
+      document.cookie.includes("sb-access-token") ||
+      document.cookie.includes("sb-refresh-token")
 
-    if (checkAuthentication() && !isInstalled && !dismissed) {
-      console.log("[v0] Showing PWA install prompt")
-      setTimeout(() => {
-        setShowPrompt(true)
-      }, 1000)
+    console.log("[PWA] Status", {
+      isInstalled,
+      dismissed,
+      isAuthenticated,
+      isInstallReady,
+    })
+
+    // ✅ FIX: Show prompt ONLY when install is ACTUALLY allowed
+    if (
+      isAuthenticated &&
+      !isInstalled &&
+      !dismissed &&
+      isInstallReady
+    ) {
+      setTimeout(() => setShowPrompt(true), 1000)
     }
 
+    // ✅ FROM OLD FILE (login re-check)
     const handleLoginSuccess = () => {
-      console.log("[v0] Login success event received")
-      if (!isInstalled && !dismissed) {
-        setTimeout(() => {
-          setShowPrompt(true)
-        }, 500)
+      if (!isInstalled && !dismissed && isInstallReady) {
+        setTimeout(() => setShowPrompt(true), 500)
       }
     }
 
     window.addEventListener("user-logged-in", handleLoginSuccess)
 
     return () => {
-      window.removeEventListener("beforeinstallprompt", captureInstallPrompt)
+      window.removeEventListener(
+        "beforeinstallprompt",
+        captureInstallPrompt
+      )
       window.removeEventListener("user-logged-in", handleLoginSuccess)
     }
-  }, [])
+  }, [isInstallReady])
 
+  // ✅ FROM OLD FILE (safe install handler)
   const handleInstall = async () => {
-    console.log("[v0] Install button clicked")
-
     const promptToUse = deferredPrompt || globalDeferredPrompt
 
     if (!promptToUse) {
-      console.log("[v0] No deferred prompt available")
+      console.warn("[PWA] Install attempted without prompt")
       setShowPrompt(false)
-      localStorage.setItem("pwa-install-dismissed", Date.now().toString())
+      localStorage.setItem(
+        "pwa-install-dismissed",
+        Date.now().toString()
+      )
       return
     }
 
     try {
-      console.log("[v0] Triggering native install prompt")
       await promptToUse.prompt()
       const { outcome } = await promptToUse.userChoice
-      console.log("[v0] User choice:", outcome)
-
-      if (outcome === "accepted") {
-        console.log("[v0] PWA installed successfully")
-      } else {
-        console.log("[v0] PWA installation dismissed")
-      }
-
-      globalDeferredPrompt = null
-      setDeferredPrompt(null)
-    } catch (error) {
-      console.error("[v0] Install error:", error)
+      console.log("[PWA] User choice:", outcome)
+    } catch (err) {
+      console.error("[PWA] Install error:", err)
     }
 
+    globalDeferredPrompt = null
+    setDeferredPrompt(null)
     setShowPrompt(false)
-    localStorage.setItem("pwa-install-dismissed", Date.now().toString())
+
+    localStorage.setItem(
+      "pwa-install-dismissed",
+      Date.now().toString()
+    )
   }
 
   const handleDismiss = () => {
-    console.log("[v0] Install prompt dismissed")
-    localStorage.setItem("pwa-install-dismissed", Date.now().toString())
+    localStorage.setItem(
+      "pwa-install-dismissed",
+      Date.now().toString()
+    )
     setShowPrompt(false)
   }
 
@@ -114,14 +135,17 @@ export function InstallPrompt() {
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/60 z-[100]" onClick={handleDismiss} />
+      <div
+        className="fixed inset-0 bg-black/60 z-[100]"
+        onClick={handleDismiss}
+      />
 
       <div className="fixed inset-0 z-[101] flex items-center justify-center p-4 pointer-events-none">
         <Card className="border-2 shadow-2xl bg-background w-full max-w-sm pointer-events-auto relative">
           <Button
             size="icon"
             variant="ghost"
-            className="absolute top-3 right-3 h-8 w-8 rounded-full hover:bg-muted"
+            className="absolute top-3 right-3 h-8 w-8"
             onClick={handleDismiss}
           >
             <X className="h-4 w-4" />
@@ -130,17 +154,27 @@ export function InstallPrompt() {
           <CardContent className="p-6 pt-12">
             <div className="flex flex-col items-center text-center space-y-4">
               <div className="w-20 h-20 rounded-2xl overflow-hidden shadow-md">
-                <Image src="/app-logo.png" alt="Vizhuthugal Sangam" width={80} height={80} className="object-cover" />
+                <Image
+                  src="/app-logo.png"
+                  alt="Vizhuthugal Sangam"
+                  width={80}
+                  height={80}
+                />
               </div>
 
-              <div className="space-y-2">
-                <h3 className="font-semibold text-lg">Install Vizhuthugal Sangam</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  Get quick access to your loans and finances. Works offline after installation.
-                </p>
-              </div>
+              <h3 className="font-semibold text-lg">
+                Install Vizhuthugal Sangam
+              </h3>
 
-              <Button onClick={handleInstall} className="w-full" size="lg">
+              <p className="text-sm text-muted-foreground">
+                Works offline after installation.
+              </p>
+
+              <Button
+                onClick={handleInstall}
+                className="w-full"
+                size="lg"
+              >
                 <Download className="h-4 w-4 mr-2" />
                 Install App
               </Button>
