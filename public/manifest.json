@@ -2,7 +2,7 @@
   "name": "Vizhuthugal Sangam - Loan Tracker",
   "short_name": "Vizhuthugal",
   "description": "Community loan tracking and financial management system for Vizhuthugal Sangam",
-  "start_url": "/dashboard",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",

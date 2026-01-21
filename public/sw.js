@@ -1,4 +1,4 @@
-const CACHE_NAME = "vizhuthugal-sangam-v1"
+const CACHE_NAME = "vizhuthugal-sangam-v3"
 const OFFLINE_URL = "/offline"
 
 const STATIC_ASSETS = [
