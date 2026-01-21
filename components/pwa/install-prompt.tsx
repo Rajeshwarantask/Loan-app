@@ -11,7 +11,7 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>
 }
 
-// ✅ Global backup (important for Chrome behavior)
+// ✅ FROM OLD FILE (global backup reference)
 let globalDeferredPrompt: BeforeInstallPromptEvent | null = null
 
 export function InstallPrompt() {
@@ -19,41 +19,63 @@ export function InstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] =
     useState<BeforeInstallPromptEvent | null>(null)
 
-  // ✅ Tracks if Chrome approved install
-  const [canInstall, setCanInstall] = useState(false)
+  // ✅ NEW (FIX): Track real install readiness
+  const [isInstallReady, setIsInstallReady] = useState(false)
 
   useEffect(() => {
     console.log("[PWA] InstallPrompt mounted")
 
-    // 🔹 Capture Chrome install permission
+    // ✅ FROM OLD FILE (correct event handling)
     const captureInstallPrompt = (e: Event) => {
-      console.log("[PWA] beforeinstallprompt fired")
+      console.log("[PWA] beforeinstallprompt captured")
       e.preventDefault()
 
       const promptEvent = e as BeforeInstallPromptEvent
       globalDeferredPrompt = promptEvent
       setDeferredPrompt(promptEvent)
-      setCanInstall(true)
+
+      // ✅ CRITICAL FIX (missing in new file)
+      setIsInstallReady(true)
     }
 
     window.addEventListener("beforeinstallprompt", captureInstallPrompt)
 
-    // 🔹 Show dialog AFTER login
+    // ✅ FROM OLD FILE
+    const isInstalled =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      (window.navigator as any).standalone ||
+      document.referrer.includes("android-app://")
+
+    // ✅ FROM NEW FILE (7-day dismiss logic – FIXED)
+    const dismissedTime = localStorage.getItem("pwa-install-dismissed")
+    const dismissed =
+      dismissedTime !== null &&
+      Date.now() - Number(dismissedTime) < 7 * 24 * 60 * 60 * 1000
+
+    const isAuthenticated =
+      document.cookie.includes("sb-access-token") ||
+      document.cookie.includes("sb-refresh-token")
+
+    console.log("[PWA] Status", {
+      isInstalled,
+      dismissed,
+      isAuthenticated,
+      isInstallReady,
+    })
+
+    // ✅ FIX: Show prompt ONLY when install is ACTUALLY allowed
+    if (
+      isAuthenticated &&
+      !isInstalled &&
+      !dismissed &&
+      isInstallReady
+    ) {
+      setTimeout(() => setShowPrompt(true), 1000)
+    }
+
+    // ✅ FROM OLD FILE (login re-check)
     const handleLoginSuccess = () => {
-      console.log("[PWA] User logged in")
-
-      const dismissedTime = localStorage.getItem("pwa-install-dismissed")
-      const dismissed =
-        dismissedTime !== null &&
-        Date.now() - Number(dismissedTime) < 7 * 24 * 60 * 60 * 1000
-
-      const isInstalled =
-        window.matchMedia("(display-mode: standalone)").matches ||
-        (window.navigator as any).standalone ||
-        document.referrer.includes("android-app://")
-
-      if (canInstall && !dismissed && !isInstalled) {
-        console.log("[PWA] Showing install prompt after login")
+      if (!isInstalled && !dismissed && isInstallReady) {
         setTimeout(() => setShowPrompt(true), 500)
       }
     }
@@ -65,19 +87,16 @@ export function InstallPrompt() {
         "beforeinstallprompt",
         captureInstallPrompt
       )
-      window.removeEventListener(
-        "user-logged-in",
-        handleLoginSuccess
-      )
+      window.removeEventListener("user-logged-in", handleLoginSuccess)
     }
-  }, [canInstall])
+  }, [isInstallReady])
 
-  // 🔹 Install handler
+  // ✅ FROM OLD FILE (safe install handler)
   const handleInstall = async () => {
     const promptToUse = deferredPrompt || globalDeferredPrompt
 
     if (!promptToUse) {
-      console.warn("[PWA] Install clicked without prompt")
+      console.warn("[PWA] Install attempted without prompt")
       setShowPrompt(false)
       localStorage.setItem(
         "pwa-install-dismissed",
@@ -89,9 +108,9 @@ export function InstallPrompt() {
     try {
       await promptToUse.prompt()
       const { outcome } = await promptToUse.userChoice
-      console.log("[PWA] Install outcome:", outcome)
+      console.log("[PWA] User choice:", outcome)
     } catch (err) {
-      console.error("[PWA] Install failed:", err)
+      console.error("[PWA] Install error:", err)
     }
 
     globalDeferredPrompt = null
@@ -104,7 +123,6 @@ export function InstallPrompt() {
     )
   }
 
-  // 🔹 Dismiss handler
   const handleDismiss = () => {
     localStorage.setItem(
       "pwa-install-dismissed",
@@ -117,13 +135,11 @@ export function InstallPrompt() {
 
   return (
     <>
-      {/* Overlay */}
       <div
         className="fixed inset-0 bg-black/60 z-[100]"
         onClick={handleDismiss}
       />
 
-      {/* Dialog */}
       <div className="fixed inset-0 z-[101] flex items-center justify-center p-4 pointer-events-none">
         <Card className="border-2 shadow-2xl bg-background w-full max-w-sm pointer-events-auto relative">
           <Button
@@ -151,7 +167,6 @@ export function InstallPrompt() {
               </h3>
 
               <p className="text-sm text-muted-foreground">
-                Get quick access to your loans and finances.
                 Works offline after installation.
               </p>
 
