@@ -40,7 +40,9 @@ export function InstallPrompt() {
       (window.navigator as any).standalone ||
       document.referrer.includes("android-app://")
 
-    const dismissed = localStorage.getItem("pwa-install-dismissed")
+    const dismissedTime = localStorage.getItem("pwa-install-dismissed")
+    // Allow prompt to reappear after 7 days
+    const dismissed = dismissedTime && (Date.now() - parseInt(dismissedTime)) < 7 * 24 * 60 * 60 * 1000
 
     console.log("[v0] PWA Status - Installed:", isInstalled, "Dismissed:", dismissed)
 
@@ -76,7 +78,7 @@ export function InstallPrompt() {
     if (!promptToUse) {
       console.log("[v0] No deferred prompt available")
       setShowPrompt(false)
-      localStorage.setItem("pwa-install-dismissed", "true")
+      localStorage.setItem("pwa-install-dismissed", Date.now().toString())
       return
     }
 
@@ -99,12 +101,12 @@ export function InstallPrompt() {
     }
 
     setShowPrompt(false)
-    localStorage.setItem("pwa-install-dismissed", "true")
+    localStorage.setItem("pwa-install-dismissed", Date.now().toString())
   }
 
   const handleDismiss = () => {
     console.log("[v0] Install prompt dismissed")
-    localStorage.setItem("pwa-install-dismissed", "true")
+    localStorage.setItem("pwa-install-dismissed", Date.now().toString())
     setShowPrompt(false)
   }
 
