@@ -1,10 +1,6 @@
 const CACHE_NAME = "vizhuthugal-sangam-v4"
 const OFFLINE_URL = "/offline"
 
-/**
- * ✅ ONLY truly static files here
- * ❌ NO Next.js routes
- */
 const STATIC_ASSETS = [
   "/",
   "/offline",
@@ -52,7 +48,7 @@ self.addEventListener("fetch", (event) => {
   if (!event.request.url.startsWith("http")) return
   if (event.request.url.includes("supabase.co")) return
 
-  // ✅ Navigation requests (MOST IMPORTANT)
+  // Navigation requests
   if (event.request.mode === "navigate") {
     event.respondWith(
       fetch(event.request).catch(() => caches.match(OFFLINE_URL))
@@ -60,7 +56,7 @@ self.addEventListener("fetch", (event) => {
     return
   }
 
-  // ✅ Static assets
+  // Static assets
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached
@@ -69,7 +65,6 @@ self.addEventListener("fetch", (event) => {
   )
 })
 
-// OPTIONAL MESSAGE HANDLER
 self.addEventListener("message", (event) => {
   if (event.data?.type === "SKIP_WAITING") {
     self.skipWaiting()
