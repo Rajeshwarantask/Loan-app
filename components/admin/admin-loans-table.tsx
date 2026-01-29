@@ -101,7 +101,7 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
 
         const { data: previousPayments } = await supabase
           .from("loan_payments")
-          .select("remaining_balance, period_key")
+          .select("remaining_balance, period_key, period_year, period_month")
           .eq("user_id", loan.user_id)
           .or(`period_year.lt.${currentYear},and(period_year.eq.${currentYear},period_month.lt.${currentMonth})`)
           .order("period_year", { ascending: false })
@@ -112,12 +112,12 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
         if (previousPayments) {
           let balanceWithAdditionalLoans = previousPayments.remaining_balance
           
-          // Fetch additional loans taken since the previous payment
+          // Fetch additional loans taken from the last payment period onwards
           const { data: additionalLoans } = await supabase
             .from("additional_loan")
             .select("additional_loan_amount, period_year, period_month")
             .eq("user_id", loan.user_id)
-            .gte("period_year", previousPayments.period_year ? previousPayments.period_year : currentYear)
+            .gte("period_year", previousPayments.period_year || currentYear)
             .filter(
               "period_month",
               "gte",
@@ -129,6 +129,7 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
           if (additionalLoans && additionalLoans.length > 0) {
             const additionalLoanAmount = additionalLoans.reduce((sum, al) => sum + (Number(al.additional_loan_amount) || 0), 0)
             balanceWithAdditionalLoans += additionalLoanAmount
+            console.log("[v0] AdminLoansTable - Additional loans for", loan.profiles.member_id, ":", additionalLoanAmount, "Total:", balanceWithAdditionalLoans)
           }
 
           openingBalances[loan.id] = balanceWithAdditionalLoans
