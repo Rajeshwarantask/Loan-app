@@ -814,7 +814,7 @@ export function RecordPaymentUnifiedDialog({
               <p className="text-[9px] md:text-xs text-muted-foreground">
                 {accumulatedSubscription > 0
                   ? `Previous: ${formatCurrency(accumulatedSubscription)} + Current: ₹2,100`
-                  : "Monthly contribution amount"}
+                  : `Monthly contribution amount: ${formatCurrency(2100)}`}
               </p>
             </div>
 
