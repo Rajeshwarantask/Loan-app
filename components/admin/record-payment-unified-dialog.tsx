@@ -275,13 +275,14 @@ export function RecordPaymentUnifiedDialog({
     try {
       const supabase = createClient()
 
+      // Fetch the most recent payment balance
       const { data: paymentData, error: paymentError } = await supabase
         .from("loan_payments")
-        .select("remaining_balance, new_loan_taken, period_key")
+        .select("remaining_balance, period_key, period_month, period_year")
         .eq("user_id", loan.user_id)
         .order("period_year", { ascending: false })
         .order("period_month", { ascending: false })
-        .limit(10)
+        .limit(1)
 
       if (paymentError) {
         console.error("[v0] Error fetching payment balance:", paymentError)
@@ -289,25 +290,50 @@ export function RecordPaymentUnifiedDialog({
         return
       }
 
+      let balanceToUse = loan.loan_amount
+
       if (paymentData && paymentData.length > 0) {
         const mostRecentPayment = paymentData[0]
-        // Include new loan taken in the balance calculation for next month
-        const balanceWithNewLoan = (mostRecentPayment.remaining_balance || 0) + (mostRecentPayment.new_loan_taken || 0)
-        console.log(
-          "[v0] RecordPayment - using balance from period:",
-          mostRecentPayment.period_key,
-          "balance:",
-          mostRecentPayment.remaining_balance,
-          "new_loan_taken:",
-          mostRecentPayment.new_loan_taken,
-          "total for next month:",
-          balanceWithNewLoan,
-        )
-        setPrincipalRemaining(balanceWithNewLoan)
+        balanceToUse = mostRecentPayment.remaining_balance || loan.loan_amount
+
+        // Fetch additional loans taken AFTER the last payment period
+        const { data: additionalLoans, error: loanError } = await supabase
+          .from("additional_loans")
+          .select("amount")
+          .eq("user_id", loan.user_id)
+          .filter(
+            "created_at",
+            "gt",
+            new Date(mostRecentPayment.period_year, mostRecentPayment.period_month - 1).toISOString(),
+          )
+
+        if (!loanError && additionalLoans) {
+          const additionalLoanAmount = additionalLoans.reduce((sum, al) => sum + (al.amount || 0), 0)
+          balanceToUse += additionalLoanAmount
+
+          console.log(
+            "[v0] RecordPayment - Balance from period:",
+            mostRecentPayment.period_key,
+            "base balance:",
+            mostRecentPayment.remaining_balance,
+            "additional loans:",
+            additionalLoanAmount,
+            "total for next month:",
+            balanceToUse,
+          )
+        } else {
+          console.log(
+            "[v0] RecordPayment - using balance from period:",
+            mostRecentPayment.period_key,
+            "balance:",
+            balanceToUse,
+          )
+        }
       } else {
         console.log("[v0] RecordPayment - no payment history (first month), using loan_amount:", loan.loan_amount)
-        setPrincipalRemaining(loan.loan_amount)
       }
+
+      setPrincipalRemaining(balanceToUse)
     } catch (err) {
       console.error("[v0] Error in fetchMostRecentBalance:", err)
       setPrincipalRemaining(loan.loan_amount)
