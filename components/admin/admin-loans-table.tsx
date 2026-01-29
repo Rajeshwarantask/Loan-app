@@ -112,13 +112,14 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
         if (previousPayments) {
           let balanceWithAdditionalLoans = previousPayments.remaining_balance
           
-          // Fetch additional loans taken in CURRENT month only
+          // Fetch additional loans taken in the last payment month only
+          // (these should be added to this month's opening balance)
           const { data: additionalLoans } = await supabase
             .from("additional_loan")
             .select("additional_loan_amount, period_year, period_month")
             .eq("user_id", loan.user_id)
-            .eq("period_year", currentYear)
-            .eq("period_month", currentMonth)
+            .eq("period_year", previousPayments.period_year)
+            .eq("period_month", previousPayments.period_month)
 
           if (additionalLoans && additionalLoans.length > 0) {
             const additionalLoanAmount = additionalLoans.reduce((sum, al) => sum + (Number(al.additional_loan_amount) || 0), 0)
