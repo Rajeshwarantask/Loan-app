@@ -296,19 +296,20 @@ export function RecordPaymentUnifiedDialog({
         const mostRecentPayment = paymentData[0]
         balanceToUse = mostRecentPayment.remaining_balance || loan.loan_amount
 
-        // Fetch additional loans taken AFTER the last payment period
+        // Fetch additional loans taken from the last payment period onwards
         const { data: additionalLoans, error: loanError } = await supabase
-          .from("additional_loans")
-          .select("amount")
+          .from("additional_loan")
+          .select("additional_loan_amount, period_year, period_month")
           .eq("user_id", loan.user_id)
+          .gte("period_year", mostRecentPayment.period_year)
           .filter(
-            "created_at",
-            "gt",
-            new Date(mostRecentPayment.period_year, mostRecentPayment.period_month - 1).toISOString(),
+            "period_month",
+            "gte",
+            mostRecentPayment.period_month
           )
 
-        if (!loanError && additionalLoans) {
-          const additionalLoanAmount = additionalLoans.reduce((sum, al) => sum + (al.amount || 0), 0)
+        if (!loanError && additionalLoans && additionalLoans.length > 0) {
+          const additionalLoanAmount = additionalLoans.reduce((sum, al) => sum + (Number(al.additional_loan_amount) || 0), 0)
           balanceToUse += additionalLoanAmount
 
           console.log(
