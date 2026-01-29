@@ -675,8 +675,13 @@ export function RecordPaymentUnifiedDialog({
         <div className="space-y-3 md:space-y-4 py-2 md:py-4">
           <div className="grid grid-cols-3 gap-1.5 md:gap-3">
             <div className="p-2 md:p-3 bg-blue-50 rounded-lg border border-blue-200">
-              <div className="text-[9px] md:text-xs text-muted-foreground mb-1">Total Loan Taken</div>
-              <div className="text-[10px] md:text-sm font-bold text-blue-600">{formatCurrency(loan.loan_amount)}</div>
+              <div className="text-[9px] md:text-xs text-muted-foreground mb-1">Total Due</div>
+              <div className="text-[8px] md:text-xs space-y-0.5">
+                <div className="text-blue-600 font-semibold">EMI: {formatCurrency(emi)}</div>
+                <div className="text-blue-600 font-semibold">Sub: {formatCurrency(Number(monthlySubscription))}</div>
+                <div className="text-blue-600 font-semibold">Int: {formatCurrency(totalInterestDue)}</div>
+                <div className="text-blue-700 font-bold border-t border-blue-200 pt-0.5">= {formatCurrency(emi + Number(monthlySubscription) + totalInterestDue)}</div>
+              </div>
             </div>
             <div className="p-2 md:p-3 bg-green-50 rounded-lg border border-green-200">
               <div className="text-[9px] md:text-xs text-muted-foreground mb-1">Remaining Principal</div>
