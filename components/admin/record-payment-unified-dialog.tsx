@@ -277,7 +277,7 @@ export function RecordPaymentUnifiedDialog({
 
       const { data: paymentData, error: paymentError } = await supabase
         .from("loan_payments")
-        .select("remaining_balance, period_key")
+        .select("remaining_balance, new_loan_taken, period_key")
         .eq("user_id", loan.user_id)
         .order("period_year", { ascending: false })
         .order("period_month", { ascending: false })
@@ -291,13 +291,19 @@ export function RecordPaymentUnifiedDialog({
 
       if (paymentData && paymentData.length > 0) {
         const mostRecentPayment = paymentData[0]
+        // Include new loan taken in the balance calculation for next month
+        const balanceWithNewLoan = (mostRecentPayment.remaining_balance || 0) + (mostRecentPayment.new_loan_taken || 0)
         console.log(
           "[v0] RecordPayment - using balance from period:",
           mostRecentPayment.period_key,
           "balance:",
           mostRecentPayment.remaining_balance,
+          "new_loan_taken:",
+          mostRecentPayment.new_loan_taken,
+          "total for next month:",
+          balanceWithNewLoan,
         )
-        setPrincipalRemaining(mostRecentPayment.remaining_balance)
+        setPrincipalRemaining(balanceWithNewLoan)
       } else {
         console.log("[v0] RecordPayment - no payment history (first month), using loan_amount:", loan.loan_amount)
         setPrincipalRemaining(loan.loan_amount)
