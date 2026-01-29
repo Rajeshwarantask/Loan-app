@@ -66,7 +66,10 @@ export function RecordPaymentUnifiedDialog({
   const newLoan = Number(newLoanAmount) || 0
 
   const finalRemainingBalance = Math.max(0, principalRemaining - emi - additionalPrincipal + newLoan)
-  const currentMonthInterest = Math.max(0, Math.round((finalRemainingBalance * loan.interest_rate) / 100))
+  // Interest should be calculated on balance BEFORE new loan is added (for current month)
+  // New loan will affect NEXT month's interest calculation
+  const balanceForCurrentInterest = Math.max(0, principalRemaining - emi - additionalPrincipal)
+  const currentMonthInterest = Math.max(0, Math.round((balanceForCurrentInterest * loan.interest_rate) / 100))
   const totalInterestDue = accumulatedInterest + currentMonthInterest
   const totalSubscriptionDue = accumulatedSubscription + 2100
 
