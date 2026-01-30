@@ -85,10 +85,8 @@ export function AddLoanDialog({ users }: AddLoanDialogProps) {
       }
 
       if (existingLoans) {
-        // Top-up existing loan
-        console.log("[v0] Top-up existing loan:", existingLoans.id)
-
-        const currentBalance = existingLoans.remaining_balance ?? existingLoans.loan_amount
+        // Top-up existing loan using additional_loan table (new logic)
+        console.log("[v0] Top-up existing loan via additional_loan:", existingLoans.id)
 
         const today = new Date()
         const periodKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`
@@ -100,6 +98,9 @@ export function AddLoanDialog({ users }: AddLoanDialogProps) {
           period_key: periodKey,
         })
 
+        // Only insert into additional_loan table - no direct loan update
+        // The additional loan will be picked up by the balance calculation logic
+        // and will accumulate in next month's opening balance
         const { error: additionalError } = await supabase.from("additional_loan").insert({
           user_id: userId,
           member_id: existingLoans.member_id || selectedUser.member_id,
@@ -115,28 +116,7 @@ export function AddLoanDialog({ users }: AddLoanDialogProps) {
           throw additionalError
         }
 
-        const newTotalAmount = currentBalance + principal
-
-        console.log("[v0] Updating loan:", {
-          id: existingLoans.id,
-          newTotalAmount,
-          currentBalance,
-        })
-
-        const { error: updateError } = await supabase
-          .from("loans")
-          .update({
-            loan_amount: newTotalAmount,
-            remaining_balance: newTotalAmount,
-          })
-          .eq("id", existingLoans.id)
-
-        if (updateError) {
-          console.error("[v0] Loan update error:", updateError)
-          throw updateError
-        }
-
-        console.log("[v0] Loan top-up successful")
+        console.log("[v0] Loan top-up recorded in additional_loan table successfully")
       } else {
         console.log("[v0] Creating new loan for user:", userId)
 
