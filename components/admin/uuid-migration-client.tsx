@@ -266,7 +266,7 @@ export function UUIDMigrationClient({
 
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="old-uuid">Legacy UUID</Label>
+              <Label htmlFor="old-uuid">Old Legacy UUID</Label>
               <Input
                 id="old-uuid"
                 placeholder="Enter the old/legacy UUID"
