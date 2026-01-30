@@ -18,20 +18,18 @@ export interface Loan {
   id: string
   user_id: string
   member_id?: string
-  loan_amount: number // Changed from amount
+  loan_amount: number
   interest_rate: number
   duration_months: number
   purpose: string | null
   status: "pending" | "approved" | "rejected" | "active" | "completed"
-  remaining_balance: number // Changed from principal_remaining
-  additional_principal: number
-  interest_paid: number
-  principal_paid: number
-  monthly_emi: number // Changed from monthly_emi_amount
+  remaining_balance: number
+  monthly_emi: number
   payment_date: string | null
   requested_at: string
   approved_at: string | null
   approved_by: string | null
+  full_name?: string
   created_at: string
   updated_at: string
   period_year: number
@@ -47,12 +45,13 @@ export interface LoanPayment {
   month_year: string
   principal_paid: number
   interest_paid: number
-  additional_principal: number
   monthly_emi: number
   remaining_balance: number
   amount: number
+  monthly_subscription: number
   status: "paid" | "unpaid" | "missed" | "partial" | "completed"
   payment_date: string | null
+  full_name?: string
   created_at: string
   updated_at: string
   period_year: number
