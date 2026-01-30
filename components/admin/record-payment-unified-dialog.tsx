@@ -66,7 +66,10 @@ export function RecordPaymentUnifiedDialog({
   const newLoan = Number(newLoanAmount) || 0
 
   const finalRemainingBalance = Math.max(0, principalRemaining - emi - additionalPrincipal + newLoan)
-  const currentMonthInterest = Math.max(0, Math.round((finalRemainingBalance * loan.interest_rate) / 100))
+  // Interest should be calculated on balance BEFORE new loan is added (for current month)
+  // New loan will affect NEXT month's interest calculation
+  const balanceForCurrentInterest = Math.max(0, principalRemaining - emi - additionalPrincipal)
+  const currentMonthInterest = Math.max(0, Math.round((balanceForCurrentInterest * loan.interest_rate) / 100))
   const totalInterestDue = accumulatedInterest + currentMonthInterest
   const totalSubscriptionDue = accumulatedSubscription + 2100
 
@@ -272,13 +275,14 @@ export function RecordPaymentUnifiedDialog({
     try {
       const supabase = createClient()
 
+      // Fetch the most recent payment balance
       const { data: paymentData, error: paymentError } = await supabase
         .from("loan_payments")
-        .select("remaining_balance, period_key")
+        .select("remaining_balance, period_key, period_month, period_year")
         .eq("user_id", loan.user_id)
         .order("period_year", { ascending: false })
         .order("period_month", { ascending: false })
-        .limit(10)
+        .limit(1)
 
       if (paymentError) {
         console.error("[v0] Error fetching payment balance:", paymentError)
@@ -286,19 +290,51 @@ export function RecordPaymentUnifiedDialog({
         return
       }
 
+      let balanceToUse = loan.loan_amount
+
       if (paymentData && paymentData.length > 0) {
         const mostRecentPayment = paymentData[0]
-        console.log(
-          "[v0] RecordPayment - using balance from period:",
-          mostRecentPayment.period_key,
-          "balance:",
-          mostRecentPayment.remaining_balance,
-        )
-        setPrincipalRemaining(mostRecentPayment.remaining_balance)
+        balanceToUse = mostRecentPayment.remaining_balance || loan.loan_amount
+
+        // Fetch additional loans taken from the last payment period onwards
+        const { data: additionalLoans, error: loanError } = await supabase
+          .from("additional_loan")
+          .select("additional_loan_amount, period_year, period_month")
+          .eq("user_id", loan.user_id)
+          .gte("period_year", mostRecentPayment.period_year)
+          .filter(
+            "period_month",
+            "gte",
+            mostRecentPayment.period_month
+          )
+
+        if (!loanError && additionalLoans && additionalLoans.length > 0) {
+          const additionalLoanAmount = additionalLoans.reduce((sum, al) => sum + (Number(al.additional_loan_amount) || 0), 0)
+          balanceToUse += additionalLoanAmount
+
+          console.log(
+            "[v0] RecordPayment - Balance from period:",
+            mostRecentPayment.period_key,
+            "base balance:",
+            mostRecentPayment.remaining_balance,
+            "additional loans:",
+            additionalLoanAmount,
+            "total for next month:",
+            balanceToUse,
+          )
+        } else {
+          console.log(
+            "[v0] RecordPayment - using balance from period:",
+            mostRecentPayment.period_key,
+            "balance:",
+            balanceToUse,
+          )
+        }
       } else {
         console.log("[v0] RecordPayment - no payment history (first month), using loan_amount:", loan.loan_amount)
-        setPrincipalRemaining(loan.loan_amount)
       }
+
+      setPrincipalRemaining(balanceToUse)
     } catch (err) {
       console.error("[v0] Error in fetchMostRecentBalance:", err)
       setPrincipalRemaining(loan.loan_amount)
@@ -639,8 +675,13 @@ export function RecordPaymentUnifiedDialog({
         <div className="space-y-3 md:space-y-4 py-2 md:py-4">
           <div className="grid grid-cols-3 gap-1.5 md:gap-3">
             <div className="p-2 md:p-3 bg-blue-50 rounded-lg border border-blue-200">
-              <div className="text-[9px] md:text-xs text-muted-foreground mb-1">Total Loan Taken</div>
-              <div className="text-[10px] md:text-sm font-bold text-blue-600">{formatCurrency(loan.loan_amount)}</div>
+              <div className="text-[9px] md:text-xs text-muted-foreground mb-1">Total Due</div>
+              <div className="text-[8px] md:text-xs space-y-0.5">
+                <div className="text-blue-600 font-semibold">EMI: {formatCurrency(emi)}</div>
+                <div className="text-blue-600 font-semibold">Sub: {formatCurrency(Number(monthlySubscription))}</div>
+                <div className="text-blue-600 font-semibold">Int: {formatCurrency(totalInterestDue)}</div>
+                <div className="text-blue-700 font-bold border-t border-blue-200 pt-0.5">= {formatCurrency(emi + Number(monthlySubscription) + totalInterestDue)}</div>
+              </div>
             </div>
             <div className="p-2 md:p-3 bg-green-50 rounded-lg border border-green-200">
               <div className="text-[9px] md:text-xs text-muted-foreground mb-1">Remaining Principal</div>
@@ -779,7 +820,7 @@ export function RecordPaymentUnifiedDialog({
               <p className="text-[9px] md:text-xs text-muted-foreground">
                 {accumulatedSubscription > 0
                   ? `Previous: ${formatCurrency(accumulatedSubscription)} + Current: ₹2,100`
-                  : "Monthly contribution amount"}
+                  : `Monthly contribution amount: ${formatCurrency(2100)}`}
               </p>
             </div>
 

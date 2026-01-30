@@ -14,6 +14,7 @@ import {
   Calendar,
   RotateCcw,
   TrendingUp,
+  Database,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { UserRole } from "@/lib/types"
@@ -43,6 +44,7 @@ export function Sidebar({ role, userName }: SidebarProps) {
     { href: "/admin/monthly-cycles", label: "Monthly Cycles", icon: Calendar },
     { href: "/admin/requests", label: "Loan Requests", icon: DollarSign },
     { href: "/admin/cash-bill", label: "Cash Bill", icon: FileText },
+    { href: "/admin/uuid-migration", label: "UUID Migration", icon: Database },
     { href: "/investments", label: "Investment", icon: TrendingUp },
     { href: "/admin/notices", label: "Manage Notices", icon: Bell },
     { href: "/calculator", label: "Calculator", icon: Calculator },

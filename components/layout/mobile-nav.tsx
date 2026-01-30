@@ -16,6 +16,7 @@ import {
   ClipboardList,
   Calendar,
   TrendingUp,
+  Database,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { UserRole } from "@/lib/types"
@@ -49,6 +50,7 @@ export function MobileNav({ role, userName }: MobileNavProps) {
     { href: "/admin/monthly-cycles", label: "Monthly Cycles", icon: Calendar },
     { href: "/admin/requests", label: "Loan Requests", icon: ClipboardList },
     { href: "/admin/cash-bill", label: "Cash Bill", icon: FileText },
+    { href: "/admin/uuid-migration", label: "UUID Migration", icon: Database },
     { href: "/investments", label: "Investment", icon: TrendingUp },
     { href: "/admin/notices", label: "Manage Notices", icon: Bell },
     { href: "/calculator", label: "Calculator", icon: Calculator },
