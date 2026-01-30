@@ -9,7 +9,7 @@ This document explains how to set up automated deletion of notice images older t
 1. Add a `CRON_SECRET` environment variable to your Vercel project
 2. Add the following to your `vercel.json`:
 
-```json
+\`\`\`json
 {
   "crons": [
     {
@@ -18,7 +18,7 @@ This document explains how to set up automated deletion of notice images older t
     }
   ]
 }
-```
+\`\`\`
 
 This will run the cleanup daily at 2 AM UTC.
 
@@ -35,7 +35,7 @@ Use a service like cron-job.org or EasyCron to call the cleanup endpoint:
 
 If you have access to pg_cron extension in Supabase:
 
-```sql
+\`\`\`sql
 -- Enable extension (requires superuser)
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 
@@ -45,7 +45,7 @@ SELECT cron.schedule(
   '0 2 * * *',
   'SELECT delete_old_notice_images()'
 );
-```
+\`\`\`
 
 ## How It Works
 
@@ -59,10 +59,10 @@ SELECT cron.schedule(
 
 To manually trigger cleanup, call the API endpoint with proper authorization:
 
-```bash
+\`\`\`bash
 curl -X GET https://your-domain.com/api/cron/cleanup-old-notice-images \
   -H "Authorization: Bearer YOUR_CRON_SECRET"
-```
+\`\`\`
 
 ## Storage Policy
 

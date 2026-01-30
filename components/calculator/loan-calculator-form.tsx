@@ -47,7 +47,7 @@ export function LoanCalculatorForm() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="duration">Duration (Months)</Label>
+              <Label htmlFor="duration">Duration in (Months)</Label>
               <Input
                 id="duration"
                 type="number"
