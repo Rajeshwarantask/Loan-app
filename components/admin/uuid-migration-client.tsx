@@ -126,11 +126,22 @@ export function UUIDMigrationClient({
 
       // Migrate each table
       for (const { name, column } of tables) {
-        // Special handling for profiles table - delete old profile and update foreign keys
+        // Special handling for profiles table - check if duplicate would be formed
         if (name === "profiles") {
           console.log("[v0] Handling profiles table special case")
           
-          // First, update all foreign key references pointing to the old UUID
+          // Check if a profile with the newUUID already exists
+          const { data: existingNewProfile } = await supabase
+            .from("profiles")
+            .select("id")
+            .eq("id", newUUID)
+            .single()
+
+          const newProfileExists = !!existingNewProfile
+
+          console.log(`[v0] New profile (${newUUID}) exists: ${newProfileExists}`)
+
+          // Update all foreign key references first
           const referencingTables = [
             { name: "loans", column: "user_id" },
             { name: "loan_payments", column: "user_id" },
@@ -151,19 +162,36 @@ export function UUIDMigrationClient({
             }
           }
 
-          // Now delete the old profile record
-          const { error: deleteError, count: deletedCount } = await supabase
-            .from("profiles")
-            .delete()
-            .eq("id", oldUUID)
+          // If newUUID exists, delete the old profile to avoid duplicate key error
+          // If newUUID doesn't exist, just update the old profile ID to newUUID
+          if (newProfileExists) {
+            const { error: deleteError, count: deletedCount } = await supabase
+              .from("profiles")
+              .delete()
+              .eq("id", oldUUID)
 
-          if (deleteError) {
-            console.error("[v0] Error deleting old profile:", deleteError)
-            throw new Error(`Failed to delete old profile: ${deleteError.message}`)
+            if (deleteError) {
+              console.error("[v0] Error deleting old profile:", deleteError)
+              throw new Error(`Failed to delete old profile: ${deleteError.message}`)
+            }
+
+            console.log(`[v0] Deleted old profile record for ${oldUUID} (newUUID already exists)`)
+            totalRecordsMigrated += deletedCount || 0
+          } else {
+            // Just update the old profile ID to the new UUID
+            const { error: updateError, count: updatedCount } = await supabase
+              .from("profiles")
+              .update({ id: newUUID })
+              .eq("id", oldUUID)
+
+            if (updateError) {
+              console.error("[v0] Error updating profile ID:", updateError)
+              throw new Error(`Failed to update profile ID: ${updateError.message}`)
+            }
+
+            console.log(`[v0] Updated profile ID from ${oldUUID} to ${newUUID}`)
+            totalRecordsMigrated += updatedCount || 0
           }
-
-          console.log(`[v0] Deleted old profile record for ${oldUUID}`)
-          totalRecordsMigrated += deletedCount || 0
         } else {
           // For other tables, just update the user_id
           const { error, count } = await supabase
