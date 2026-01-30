@@ -126,18 +126,59 @@ export function UUIDMigrationClient({
 
       // Migrate each table
       for (const { name, column } of tables) {
-        const { error, count } = await supabase
-          .from(name)
-          .update({ [column]: newUUID })
-          .eq(column, oldUUID)
+        // Special handling for profiles table - delete old profile and update foreign keys
+        if (name === "profiles") {
+          console.log("[v0] Handling profiles table special case")
+          
+          // First, update all foreign key references pointing to the old UUID
+          const referencingTables = [
+            { name: "loans", column: "user_id" },
+            { name: "loan_payments", column: "user_id" },
+            { name: "additional_loan", column: "user_id" },
+            { name: "investments", column: "user_id" },
+            { name: "loan_requests", column: "user_id" },
+          ]
 
-        if (error) {
-          console.error(`[v0] Migration error in ${name}:`, error)
-          throw new Error(`Failed to migrate ${name}: ${error.message}`)
+          for (const { name: refTable, column: refColumn } of referencingTables) {
+            const { error: refError } = await supabase
+              .from(refTable)
+              .update({ [refColumn]: newUUID })
+              .eq(refColumn, oldUUID)
+
+            if (refError) {
+              console.error(`[v0] Error updating foreign keys in ${refTable}:`, refError)
+              throw new Error(`Failed to update ${refTable}: ${refError.message}`)
+            }
+          }
+
+          // Now delete the old profile record
+          const { error: deleteError, count: deletedCount } = await supabase
+            .from("profiles")
+            .delete()
+            .eq("id", oldUUID)
+
+          if (deleteError) {
+            console.error("[v0] Error deleting old profile:", deleteError)
+            throw new Error(`Failed to delete old profile: ${deleteError.message}`)
+          }
+
+          console.log(`[v0] Deleted old profile record for ${oldUUID}`)
+          totalRecordsMigrated += deletedCount || 0
+        } else {
+          // For other tables, just update the user_id
+          const { error, count } = await supabase
+            .from(name)
+            .update({ [column]: newUUID })
+            .eq(column, oldUUID)
+
+          if (error) {
+            console.error(`[v0] Migration error in ${name}:`, error)
+            throw new Error(`Failed to migrate ${name}: ${error.message}`)
+          }
+
+          console.log(`[v0] Migrated ${count || 0} records in ${name}`)
+          totalRecordsMigrated += count || 0
         }
-
-        console.log(`[v0] Migrated ${count || 0} records in ${name}`)
-        totalRecordsMigrated += count || 0
       }
 
       // Log the migration
