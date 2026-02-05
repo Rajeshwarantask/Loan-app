@@ -6,6 +6,7 @@ import { DashboardStats } from "@/components/dashboard/dashboard-stats"
 import { LoanOverview } from "@/components/dashboard/loan-overview"
 import { RecentNotices } from "@/components/dashboard/recent-notices"
 import { CollectionStatsCharts } from "@/components/dashboard/collection-stats-charts"
+import { PaymentProjection } from "@/components/dashboard/payment-projection"
 
 export const revalidate = 0
 export const dynamic = "force-dynamic"
@@ -27,6 +28,18 @@ export default async function DashboardPage() {
     redirect("/auth/login")
   }
 
+  const { data: loans } = await supabase
+    .from("loans")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+
+  const { data: payments } = await supabase
+    .from("loan_payments")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("period_key", { ascending: false })
+
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar role={profile.role} userName={profile.full_name} />
@@ -46,14 +59,17 @@ export default async function DashboardPage() {
               <LoanOverview userId={user.id} role={profile.role} />
             </>
           ) : (
-            <div className="grid gap-6 lg:grid-cols-3">
-              <div className="lg:col-span-2">
-                <LoanOverview userId={user.id} role={profile.role} />
+            <>
+              <PaymentProjection loans={loans || []} payments={payments || []} />
+              <div className="grid gap-6 lg:grid-cols-3">
+                <div className="lg:col-span-2">
+                  <LoanOverview userId={user.id} role={profile.role} />
+                </div>
+                <div className="lg:col-span-1">
+                  <RecentNotices />
+                </div>
               </div>
-              <div className="lg:col-span-1">
-                <RecentNotices />
-              </div>
-            </div>
+            </>
           )}
         </div>
       </main>

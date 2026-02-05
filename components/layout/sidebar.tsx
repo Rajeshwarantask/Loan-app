@@ -4,7 +4,6 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
   Home,
-  Calculator,
   FileText,
   Settings,
   Bell,
@@ -15,6 +14,7 @@ import {
   RotateCcw,
   TrendingUp,
   Database,
+  Smartphone,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { UserRole } from "@/lib/types"
@@ -30,10 +30,10 @@ export function Sidebar({ role, userName }: SidebarProps) {
 
   const userLinks = [
     { href: "/dashboard", label: "Dashboard", icon: Home },
-    { href: "/calculator", label: "Loan Calculator", icon: Calculator },
     { href: "/loans", label: "My Loans", icon: FileText },
     { href: "/request-loan", label: "Request Loan", icon: DollarSign },
     { href: "/notices", label: "Notices", icon: Bell },
+    { href: "/app-alerts", label: "App & Alerts", icon: Smartphone },
     { href: "/contact", label: "Contact Admin", icon: MessageSquare },
   ]
 
@@ -47,7 +47,6 @@ export function Sidebar({ role, userName }: SidebarProps) {
     { href: "/admin/uuid-migration", label: "UUID Migration", icon: Database },
     { href: "/investments", label: "Investment", icon: TrendingUp },
     { href: "/admin/notices", label: "Manage Notices", icon: Bell },
-    { href: "/calculator", label: "Calculator", icon: Calculator },
   ]
 
   const links = role === "admin" ? adminLinks : userLinks

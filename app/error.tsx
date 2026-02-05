@@ -32,7 +32,7 @@ export default function GlobalError({
       // Hard refresh - bypass cache entirely
       window.location.href = window.location.href + "?t=" + Date.now()
       setTimeout(() => {
-        window.location.reload(true) // Force hard refresh if href doesn't work
+        window.location.reload(true) // Force hard refresh if href doesn't work.
       }, 100)
     } else {
       reset()

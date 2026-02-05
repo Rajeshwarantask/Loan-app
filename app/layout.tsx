@@ -50,6 +50,7 @@ export default function RootLayout({
       <head>
         <link rel="icon" href="/app-logo.png" />
         <link rel="apple-touch-icon" href="/icon-192.png" />
+        <link rel="manifest" href="/manifest.json" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -57,6 +58,31 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html: `
+              // FIX #3 & #5: Register service worker as early as possible
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', () => {
+                  navigator.serviceWorker.register('/sw.js').then(reg => {
+                    console.log('[PWA] Early SW registration successful');
+                  }).catch(err => {
+                    console.warn('[PWA] Early SW registration failed:', err);
+                  });
+                });
+              }
+              
+              // FIX #4: Mark user interaction
+              let hasInteracted = false;
+              const markInteraction = () => {
+                if (!hasInteracted) {
+                  hasInteracted = true;
+                  console.log('[PWA] User interaction detected');
+                  document.removeEventListener('click', markInteraction);
+                  document.removeEventListener('scroll', markInteraction);
+                }
+              };
+              document.addEventListener('click', markInteraction, { once: true });
+              document.addEventListener('scroll', markInteraction, { once: true });
+              
+              // Chunk error handling
               window.addEventListener('error', function(e) {
                 if (e.message && (e.message.includes('Failed to load chunk') || e.message.includes('Cannot find module'))) {
                   console.error('[v0] Chunk loading error detected, reloading...');

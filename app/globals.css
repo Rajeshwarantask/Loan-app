@@ -131,3 +131,11 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Hide v0 built-with button permanently */
+[id^="v0-built-with-button"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}

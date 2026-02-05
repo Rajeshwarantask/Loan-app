@@ -25,6 +25,10 @@ interface DashboardStatsProps {
 export async function DashboardStats({ userId, role }: DashboardStatsProps) {
   const supabase = await createClient()
 
+  // Calculate current period key at the start for both admin and user
+  const currentDate = new Date()
+  const currentPeriodKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`
+
   if (role === "admin") {
     // Admin stats
     const { data: loans } = await supabase.from("loans").select("loan_amount, remaining_balance, status, created_at")
@@ -38,9 +42,6 @@ export async function DashboardStats({ userId, role }: DashboardStatsProps) {
     const { data: requests } = await supabase.from("loan_requests").select("status")
 
     const { data: investments } = await supabase.from("investments").select("amount")
-
-    const currentDate = new Date()
-    const currentPeriodKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`
 
     const totalLoansIssued =
       loans?.reduce((sum, loan) => {
@@ -230,6 +231,10 @@ export async function DashboardStats({ userId, role }: DashboardStatsProps) {
     .from("loans")
     .select("loan_amount, remaining_balance, status, interest_rate")
     .eq("user_id", userId)
+  
+  const { count: memberCount } = await supabase
+    .from("profiles")
+    .select("id", { count: "exact", head: true })
 
   const { data: payments } = await supabase
     .from("loan_payments")
@@ -238,8 +243,25 @@ export async function DashboardStats({ userId, role }: DashboardStatsProps) {
     )
     .eq("user_id", userId)
 
-  const currentDate = new Date()
-  const currentPeriodKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`
+    // Total Loans Issued (active loans remaining balance)
+  const totalLoansIssued =
+    loans?.reduce((sum, loan) => {
+      if (loan.status === "active") {
+        return sum + Number(loan.remaining_balance || 0)
+      }
+      return sum
+    }, 0) || 0
+
+  // Total Interest Collected (current month, paid)
+  const totalInterestCollected =
+    payments?.reduce((sum, payment) => {
+      if (payment.status === "paid" && payment.period_key === currentPeriodKey) {
+        return sum + Number(payment.interest_paid || 0)
+      }
+      return sum
+    }, 0) || 0
+
+  const monthlyInHandClosing = totalLoansIssued + totalInterestCollected
 
   // 1. Total Loan (current month closing balance from latest payment)
   const latestPayment = payments?.sort((a, b) => {
@@ -271,13 +293,13 @@ export async function DashboardStats({ userId, role }: DashboardStatsProps) {
     }, 0) || 0
 
   // 6. Available Loan (subscription * 10 - current loan balance)
-  const availableLoan = Math.max(0, totalSubscription * 10 - totalLoan)
+  const availableLoan = (400000 - totalLoan)
 
   // 7. Penalty (total penalty paid from loan_payments - all time)
   const totalPenalty = payments?.reduce((sum, payment) => sum + Number(payment.penalty || 0), 0) || 0
 
   // 8. Total Earnings/Person (set to 0 for now)
-  const totalEarnings = 0
+  const totalEarnings = memberCount && memberCount > 0 ? Math.round(monthlyInHandClosing / memberCount) : 0
 
   return (
     <>
