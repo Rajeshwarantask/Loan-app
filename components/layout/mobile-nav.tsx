@@ -4,7 +4,6 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
   Home,
-  Calculator,
   FileText,
   User,
   Bell,
@@ -17,6 +16,7 @@ import {
   Calendar,
   TrendingUp,
   Database,
+  Smartphone,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { UserRole } from "@/lib/types"
@@ -35,11 +35,11 @@ export function MobileNav({ role, userName }: MobileNavProps) {
 
   const allUserLinks = [
     { href: "/dashboard", label: "Dashboard", icon: Home },
-    { href: "/calculator", label: "Calculator", icon: Calculator },
     { href: "/loans", label: "My Loans", icon: FileText },
     { href: "/request-loan", label: "Request Loan", icon: HandCoins },
     { href: "/notices", label: "Notices", icon: Bell },
     { href: "/contact", label: "Contact Admin", icon: Phone },
+    { href: "/app-alerts", label: "App & Alerts", icon: Smartphone },
     { href: "/settings", label: "Profile", icon: User },
   ]
 
@@ -53,14 +53,12 @@ export function MobileNav({ role, userName }: MobileNavProps) {
     { href: "/admin/uuid-migration", label: "UUID Migration", icon: Database },
     { href: "/investments", label: "Investment", icon: TrendingUp },
     { href: "/admin/notices", label: "Manage Notices", icon: Bell },
-    { href: "/calculator", label: "Calculator", icon: Calculator },
     { href: "/contact", label: "Contact", icon: Phone },
     { href: "/settings", label: "Profile", icon: User },
   ]
 
   const bottomUserLinks = [
     { href: "/dashboard", label: "Dashboard", icon: Home },
-    { href: "/calculator", label: "Calculator", icon: Calculator },
     { href: "/loans", label: "My Loans", icon: FileText },
     { href: "/settings", label: "Profile", icon: User },
   ]

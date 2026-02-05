@@ -14,7 +14,7 @@ interface LoanOverviewProps {
 
 export function LoanOverview({ userId, role }: LoanOverviewProps) {
   const [chartData, setChartData] = useState<Array<{ name: string; value: number; color: string }>>([])
-  const [stats, setStats] = useState({ totalLoanTaken: 0, totalInterestPaid: 0, pendingBalance: 0 })
+  const [stats, setStats] = useState({totalLoanTaken: 0,totalPaid: 0,pendingBalance: 0,})
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
@@ -25,7 +25,7 @@ export function LoanOverview({ userId, role }: LoanOverviewProps) {
 
       let paymentsQuery = supabase
         .from("loan_payments")
-        .select("interest_paid, remaining_balance, loan_id, created_at")
+        .select("monthly_emi, additional_principal, remaining_balance, loan_id, created_at")
         .order("created_at", { ascending: false })
 
       // Only filter by user_id for non-admin users
@@ -39,7 +39,12 @@ export function LoanOverview({ userId, role }: LoanOverviewProps) {
 
       const totalLoanTaken = loans?.reduce((sum, loan) => sum + Number(loan.loan_amount), 0) || 0
 
-      const totalInterestPaid = payments?.reduce((sum, payment) => sum + Number(payment.interest_paid), 0) || 0
+      const totalPaid =payments?.reduce((sum, payment) => {return (sum +
+          Number(payment.monthly_emi || 0) +
+          Number(payment.additional_principal || 0)
+        )
+      }, 0) || 0
+
 
       const activeLoans = loans?.filter((loan) => loan.status === "active") || []
       let pendingBalance = 0
@@ -55,13 +60,19 @@ export function LoanOverview({ userId, role }: LoanOverviewProps) {
         }
       }
 
-      setStats({ totalLoanTaken, totalInterestPaid, pendingBalance })
+      setStats({ totalLoanTaken, totalPaid, pendingBalance })
 
+      // Calculate percentages relative to total loan amount
+      // Interest Paid and Pending Balance should add up to 100%
       const data = [
-        { name: "Total Loan", value: totalLoanTaken, color: "#8b5cf6" },
-        { name: "Interest Paid", value: totalInterestPaid, color: "#10b981" },
-        { name: "Pending", value: pendingBalance, color: "#f97316" },
+        { name: "Paid (EMI + Extra)", value: totalPaid, color: "#10b981" },
+        { name: "Pending Balance", value: pendingBalance, color: "#f97316" },
       ].filter((item) => item.value > 0)
+
+
+      console.log("Loan Overview - Total Loan:", totalLoanTaken)
+      console.log("Loan Overview - Interest Paid:",  totalPaid, `(${(( totalPaid / totalLoanTaken) * 100).toFixed(2)}%)`)
+      console.log("Loan Overview - Pending Balance:", pendingBalance, `(${((pendingBalance / totalLoanTaken) * 100).toFixed(2)}%)`)
 
       setChartData(data)
       setIsLoading(false)
@@ -108,8 +119,10 @@ export function LoanOverview({ userId, role }: LoanOverviewProps) {
                 <span className="font-semibold">{formatCurrency(stats.totalLoanTaken)}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Interest Paid:</span>
-                <span className="font-semibold text-green-600">{formatCurrency(stats.totalInterestPaid)}</span>
+                <span className="text-muted-foreground">Paid (EMI + Extra):</span>
+                <span className="font-semibold text-green-600">
+                  {formatCurrency(stats.totalPaid)}
+                </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Pending Balance:</span>

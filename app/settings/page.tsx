@@ -3,8 +3,10 @@ import { createClient } from "@/lib/supabase/server"
 import { Sidebar } from "@/components/layout/sidebar"
 import { MobileNav } from "@/components/layout/mobile-nav"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { SettingsForm } from "@/components/settings/settings-form"
 import { LogoutButton } from "@/components/auth/logout-button"
+import { Phone, MessageCircle, Instagram } from "lucide-react"
 
 export default async function SettingsPage() {
   const supabase = await createClient()
@@ -68,14 +70,65 @@ export default async function SettingsPage() {
             <CardHeader>
               <CardTitle>App Information</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent className="space-y-4">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Version</span>
                 <span className="font-medium">1.1.0</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Developer</span>
-                <span className="font-medium">Rajeshwaran</span>
+                <span className="font-medium">Rajeshwaran Manikandan</span>
+              </div>
+
+              <div className="pt-4 border-t">
+                <p className="mb-3 font-semibold text-popover-foreground">Contact Developer</p>
+                <div className="flex gap-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    asChild
+                    className="flex-1 bg-transparent"
+                  >
+                    <a
+                      href="https://wa.me/919025294435"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <MessageCircle className="h-4 w-4 mr-2 text-[rgba(55,230,55,1)]" />
+                      WhatsApp
+                    </a>
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    asChild
+                    className="flex-1 bg-transparent"
+                  >
+                    <a
+                      href="https://www.instagram.com/r_a_j_e_s_h__._/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Instagram className="h-4 w-4 mr-2 text-destructive" />
+                      Instagram
+                    </a>
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    asChild
+                    className="flex-1 bg-transparent"
+                  >
+                    <a
+                      href="tel:+919025294435"
+                    >
+                      <Phone className="h-4 w-4 mr-2 text-primary" />
+                      Call
+                    </a>
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>

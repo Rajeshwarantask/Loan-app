@@ -1,3 +1,7 @@
+import { TabsContent } from "@/components/ui/tabs"
+import { TabsTrigger } from "@/components/ui/tabs"
+import { TabsList } from "@/components/ui/tabs"
+import { Tabs } from "@/components/ui/tabs"
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { Sidebar } from "@/components/layout/sidebar"
@@ -35,7 +39,7 @@ export default async function LoansPage() {
     .from("loan_payments")
     .select("*")
     .eq("user_id", user.id)
-    .order("month_year", { ascending: false })
+    .order("period_key", { ascending: false })
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -116,51 +120,31 @@ export default async function LoansPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Month</TableHead>
+                        <TableHead>Date</TableHead>
                         <TableHead className="text-right">Principal</TableHead>
                         <TableHead className="text-right">Interest</TableHead>
-                        <TableHead className="text-center">Interest Status</TableHead>
-                        <TableHead className="text-right">Remaining</TableHead>
-                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">EMI</TableHead>
+                        <TableHead className="text-right">Subscription</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {payments.map((payment) => (
-                        <TableRow key={payment.id}>
-                          <TableCell className="font-medium">{payment.period_key || "N/A"}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(Number(payment.principal_paid))}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(Number(payment.interest_paid))}</TableCell>
-                          <TableCell className="text-center">
-                            {Number(payment.interest_paid) > 0 ? (
-                              <Badge variant="default" className="bg-blue-600 hover:bg-blue-700">
-                                Paid
-                              </Badge>
-                            ) : (
-                              <Badge variant="secondary" className="bg-slate-400 hover:bg-slate-500 text-white">
-                                Unpaid
-                              </Badge>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {formatCurrency(Number(payment.remaining_balance))}
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={
-                                payment.status === "paid"
-                                  ? "default"
-                                  : payment.status === "partial"
-                                    ? "secondary"
-                                    : payment.status === "missed"
-                                      ? "destructive"
-                                      : "outline"
-                              }
-                            >
-                              {payment.status}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {payments.map((payment) => {
+                        // Get the actual paid amounts from the payment record
+                        const principal = Number(payment.additional_principal) || 0
+                        const interest = Number(payment.interest_paid) || 0
+                        const emi = Number(payment.monthly_emi) || 0
+                        const subscription = Number(payment.monthly_subscription_amount) || 2100 // Default to 2100 if not recorded
+
+                        return (
+                          <TableRow key={payment.id}>
+                            <TableCell className="font-medium">{payment.period_key || "N/A"}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(principal)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(interest)}</TableCell>
+                            <TableCell className="text-right font-semibold">{formatCurrency(emi)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(subscription)}</TableCell>
+                          </TableRow>
+                        )
+                      })}
                     </TableBody>
                   </Table>
                 </div>
