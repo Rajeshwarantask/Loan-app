@@ -66,26 +66,26 @@ The push notification system allows users to:
 
 Push notifications require VAPID keys for authentication. Generate them using:
 
-```bash
+\`\`\`bash
 # Using web-push npm package
 npx web-push generate-vapid-keys
-```
+\`\`\`
 
 This will output:
-```
+\`\`\`
 Public Key: <VAPID_PUBLIC_KEY>
 Private Key: <VAPID_PRIVATE_KEY>
-```
+\`\`\`
 
 ### 2. Set Environment Variables
 
 Add to your `.env.local`:
 
-```env
+\`\`\`env
 NEXT_PUBLIC_VAPID_PUBLIC_KEY=<your_public_key>
 VAPID_PRIVATE_KEY=<your_private_key>
 VAPID_EMAIL=your-email@example.com
-```
+\`\`\`
 
 The public key is needed for subscription (client-side).
 The private key is needed for sending notifications (server-side).
@@ -94,21 +94,21 @@ The private key is needed for sending notifications (server-side).
 
 Execute the migration to create the `push_subscriptions` table:
 
-```sql
+\`\`\`sql
 -- Run the migration from /scripts/62-create-push-subscriptions-table.sql
-```
+\`\`\`
 
 ### 4. Install Web-Push Library (Production)
 
 For production, install the `web-push` library to send notifications:
 
-```bash
+\`\`\`bash
 npm install web-push
-```
+\`\`\`
 
 Then update `/app/api/notifications/send/route.ts` to use it:
 
-```typescript
+\`\`\`typescript
 import webpush from "web-push"
 
 webpush.setVapidDetails(
@@ -119,7 +119,7 @@ webpush.setVapidDetails(
 
 // In the sendPushNotification function:
 await webpush.sendNotification(subscription, JSON.stringify(message))
-```
+\`\`\`
 
 ## Usage
 
@@ -135,7 +135,7 @@ await webpush.sendNotification(subscription, JSON.stringify(message))
 
 Example API call to send a notification:
 
-```typescript
+\`\`\`typescript
 const response = await fetch("/api/notifications/send", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
@@ -150,7 +150,7 @@ const response = await fetch("/api/notifications/send", {
     },
   }),
 })
-```
+\`\`\`
 
 ### Automated EMI Reminders
 
@@ -162,7 +162,7 @@ To send automatic EMI reminders, set up a scheduled job (cron) that:
 
 Example cron job logic:
 
-```typescript
+\`\`\`typescript
 // Runs daily at 9 AM
 const { data: loans } = await supabase
   .from("loans")
@@ -193,7 +193,7 @@ for (const loan of loans) {
     })
   }
 }
-```
+\`\`\`
 
 ## Browser Support
 
@@ -248,7 +248,7 @@ You can test push notifications using the browser DevTools:
 3. Use Chrome's "Simulate push event" feature
 4. Or manually trigger push with:
 
-```javascript
+\`\`\`javascript
 // In browser console
 navigator.serviceWorker.ready.then(reg => {
   reg.showNotification("Test Notification", {
@@ -256,4 +256,4 @@ navigator.serviceWorker.ready.then(reg => {
     icon: "/icon-192.png"
   })
 })
-```
+\`\`\`
