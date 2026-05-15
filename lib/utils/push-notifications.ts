@@ -7,12 +7,26 @@ export async function requestNotificationPermission(): Promise<boolean> {
   }
 
   if (Notification.permission === "granted") {
+    console.log("[Push] Notification permission already granted")
     return true
   }
 
+  if (Notification.permission === "denied") {
+    console.warn("[Push] Notification permission previously denied by user")
+    return false
+  }
+
   if (Notification.permission !== "denied") {
+    console.log("[Push] Requesting notification permission from user...")
     const permission = await Notification.requestPermission()
-    return permission === "granted"
+    console.log("[Push] Permission result:", permission)
+
+    if (permission === "granted") {
+      return true
+    } else if (permission === "denied") {
+      console.warn("[Push] User denied notification permission")
+      return false
+    }
   }
 
   return false
@@ -141,23 +155,70 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 // Save subscription to backend
 export async function savePushSubscription(subscription: PushSubscription, userId: string): Promise<boolean> {
   try {
-    const response = await fetch("/api/notifications/subscribe", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        subscription: subscription.toJSON(),
-        userId,
-      }),
-    })
+    console.log("[Push] Saving subscription to backend for user:", userId)
+    console.log("[Push] Subscription endpoint:", subscription.endpoint)
+    
+    // The PushSubscription has keys as an object with p256dh and auth properties
+    // These are already strings (base64 encoded), not CryptoKey objects
+    console.log("[Push] Keys object:", subscription.keys)
 
-    if (!response.ok) {
-      throw new Error("Failed to save subscription")
+    // Use toJSON() method if available, otherwise use the object directly
+    const subscriptionJSON = subscription.toJSON()
+    console.log("[Push] Subscription JSON:", JSON.stringify(subscriptionJSON, null, 2))
+
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+
+    try {
+      const response = await fetch("/api/notifications/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subscription: subscriptionJSON,
+          userId,
+        }),
+        signal: controller.signal,
+      })
+
+      clearTimeout(timeoutId)
+
+      console.log("[Push] Response status:", response.status)
+      console.log("[Push] Response headers:", {
+        contentType: response.headers.get("content-type"),
+      })
+
+      let responseData
+      try {
+        responseData = await response.json()
+      } catch (parseError) {
+        console.error("[Push] Failed to parse response JSON:", parseError)
+        const text = await response.text()
+        console.error("[Push] Response text:", text)
+        throw new Error("Invalid response from server")
+      }
+
+      console.log("[Push] Backend response:", responseData)
+
+      if (!response.ok) {
+        throw new Error(responseData.error || `Server error: ${response.status}`)
+      }
+
+      console.log("[Push] Subscription saved to backend successfully")
+      return true
+    } catch (fetchError) {
+      clearTimeout(timeoutId)
+      if (fetchError instanceof TypeError && fetchError.message.includes("abort")) {
+        console.error("[Push] Request timeout after 10 seconds")
+        throw new Error("Request timeout - server not responding")
+      }
+      throw fetchError
     }
-
-    console.log("[Push] Subscription saved to backend")
-    return true
   } catch (error) {
     console.error("[Push] Failed to save subscription:", error)
+    if (error instanceof Error) {
+      console.error("[Push] Error message:", error.message)
+      console.error("[Push] Error stack:", error.stack?.split("\n").slice(0, 3).join("\n"))
+    }
     return false
   }
 }

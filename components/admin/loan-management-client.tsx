@@ -13,6 +13,7 @@ import { UserLoanSummaryTable } from "./user-loan-summary-table"
 import { AdditionalLoanHistory } from "./additional-loan-history"
 import { QuickInitializeButton } from "./quick-initialize-button"
 import { UsersWithoutLoansTable } from "./users-without-loans-table"
+import { BackfillPeriodFilter } from "./backfill-period-filter"
 import { createClient } from "@/lib/supabase/client"
 
 interface Profile {
@@ -30,7 +31,6 @@ interface Loan {
   interest_rate: number
   status: string
   created_at: string
-  remaining_balance?: number
   profiles: Profile
 }
 
@@ -78,6 +78,9 @@ export function LoanManagementClient({ loans, payments, users, additionalLoans }
   const [loanStatusTab, setLoanStatusTab] = useState("active")
   const [isMonthInitialized, setIsMonthInitialized] = useState(false)
   const [isCheckingInitialization, setIsCheckingInitialization] = useState(true)
+  const [backfillMonth, setBackfillMonth] = useState<number>(new Date().getMonth() + 1)
+  const [backfillYear, setBackfillYear] = useState<number>(new Date().getFullYear())
+  const [backfillMissingLoans, setBackfillMissingLoans] = useState<Loan[]>([])
 
   useEffect(() => {
     const checkMonthInitialization = async () => {
@@ -111,10 +114,13 @@ export function LoanManagementClient({ loans, payments, users, additionalLoans }
 
   const filteredLoans = useMemo(() => {
     return loans.filter((loan) => {
+      // Guard against undefined profiles
+      if (!loan?.profiles) return false
+
       const matchesSearch =
-        loan.profiles.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        loan.profiles.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         loan.profiles.member_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        loan.profiles.email.toLowerCase().includes(searchTerm.toLowerCase())
+        loan.profiles.email?.toLowerCase().includes(searchTerm.toLowerCase())
 
       const matchesStatus = statusFilter === "all" || loan.status === statusFilter
       const matchesUser = selectedUser === "all" || loan.user_id === selectedUser
@@ -178,9 +184,9 @@ export function LoanManagementClient({ loans, payments, users, additionalLoans }
         if (!profile) return false
 
         return (
-          profile.full_name.toLowerCase().includes(historySearchTerm.toLowerCase()) ||
+          profile.full_name?.toLowerCase().includes(historySearchTerm.toLowerCase()) ||
           profile.member_id?.toLowerCase().includes(historySearchTerm.toLowerCase()) ||
-          profile.email.toLowerCase().includes(historySearchTerm.toLowerCase())
+          profile.email?.toLowerCase().includes(historySearchTerm.toLowerCase())
         )
       })
     }
@@ -303,7 +309,17 @@ export function LoanManagementClient({ loans, payments, users, additionalLoans }
             <CardHeader className="pb-3 md:pb-6 px-3 md:px-6 pt-3 md:pt-6">
               <CardTitle>Filters</CardTitle>
             </CardHeader>
-            <CardContent className="px-3 md:px-6">
+            <CardContent className="px-3 md:px-6 space-y-3 md:space-y-4">
+              {/* Backfill Period Filter */}
+              <BackfillPeriodFilter
+                loans={loans}
+                onPeriodChange={(month, year, missingLoans) => {
+                  setBackfillMonth(month)
+                  setBackfillYear(year)
+                  setBackfillMissingLoans(missingLoans)
+                }}
+              />
+
               <div className="grid gap-2 md:gap-4 md:grid-cols-3">
                 <div className="relative">
                   <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -346,7 +362,11 @@ export function LoanManagementClient({ loans, payments, users, additionalLoans }
               </CardDescription>
             </CardHeader>
             <CardContent className="px-2 md:px-6">
-              <AdminLoansTable loans={activeLoans} />
+              <AdminLoansTable 
+                loans={activeLoans}
+                backfillMonth={backfillMonth}
+                backfillYear={backfillYear}
+              />
             </CardContent>
           </Card>
 

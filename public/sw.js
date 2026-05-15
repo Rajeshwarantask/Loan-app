@@ -1,4 +1,4 @@
-const CACHE_NAME = "vizhuthugal-sangam-v4"
+const CACHE_NAME = "vizhuthugal-sangam-v6-notification-badge"
 const OFFLINE_URL = "/offline"
 
 const STATIC_ASSETS = [
@@ -8,6 +8,7 @@ const STATIC_ASSETS = [
   "/app-logo.png",
   "/icon-192.png",
   "/icon-512.png",
+  "/notification-badge.png",
 ]
 
 // INSTALL - FIX #1: Skip waiting immediately
@@ -73,38 +74,65 @@ self.addEventListener("fetch", (event) => {
 
 // PUSH NOTIFICATIONS
 self.addEventListener("push", (event) => {
-  console.log("[SW] Push event received:", event)
+  console.log("[v0] [SW] Push event received")
+  console.log("[v0] [SW] Event data exists:", !!event.data)
 
-  if (!event.data) {
-    console.log("[SW] No data in push event")
-    return
+  let notificationData = {
+    title: "Vizhuthugal Sangam",
+    body: "You have a new notification",
+    icon: "/icon-192.png",
+    badge: "/notification-badge.png",
+    tag: "vizhuthugal-notification",
   }
 
-  try {
-    const data = event.data.json()
-    const { title, body, icon, badge, tag } = data
-
-    const options = {
-      body: body || "Vizhuthugal Sangam",
-      icon: icon || "/icon-192.png",
-      badge: badge || "/icon-192.png",
-      tag: tag || "vizhuthugal-notification",
-      requireInteraction: false,
-      vibrate: [200, 100, 200],
-      data: data,
+  if (event.data) {
+    try {
+      const data = event.data.json()
+      console.log("[v0] [SW] Parsed notification data:", data)
+      
+      notificationData = {
+        title: data.title || notificationData.title,
+        body: data.body || notificationData.body,
+        icon: data.icon || notificationData.icon,
+        badge: data.badge || "/notification-badge.png",
+        tag: data.tag || notificationData.tag,
+        data: data,
+      }
+    } catch (error) {
+      console.error("[v0] [SW] Error parsing push data:", error)
+      // Try to get text content
+      try {
+        const text = event.data.text()
+        console.log("[v0] [SW] Raw text data:", text)
+        notificationData.body = text
+      } catch (e) {
+        console.error("[v0] [SW] Could not get text data:", e)
+      }
     }
-
-    event.waitUntil(self.registration.showNotification(title || "Vizhuthugal Sangam", options))
-  } catch (error) {
-    console.error("[SW] Error handling push event:", error)
-    event.waitUntil(
-      self.registration.showNotification("Vizhuthugal Sangam", {
-        body: event.data.text(),
-        icon: "/icon-192.png",
-        badge: "/icon-192.png",
-      })
-    )
   }
+
+  const options = {
+    body: notificationData.body,
+    icon: notificationData.icon,
+    badge: notificationData.badge,
+    tag: notificationData.tag,
+    requireInteraction: true,
+    vibrate: [200, 100, 200],
+    data: notificationData.data || {},
+    actions: [],
+  }
+
+  console.log("[v0] [SW] Showing notification with options:", options)
+
+  event.waitUntil(
+    self.registration.showNotification(notificationData.title, options)
+      .then(() => {
+        console.log("[v0] [SW] Notification shown successfully")
+      })
+      .catch((error) => {
+        console.error("[v0] [SW] Error showing notification:", error)
+      })
+  )
 })
 
 // Handle notification clicks

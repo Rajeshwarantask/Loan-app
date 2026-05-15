@@ -18,9 +18,10 @@ export function LoanOverview({ userId, role }: LoanOverviewProps) {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    async function fetchData() {
-      const supabase = createClient()
+    const supabase = createClient()
+    let subscription: any
 
+    async function fetchData() {
       let loansQuery = supabase.from("loans").select("loan_amount, user_id, id, status")
 
       let paymentsQuery = supabase
@@ -28,7 +29,6 @@ export function LoanOverview({ userId, role }: LoanOverviewProps) {
         .select("monthly_emi, additional_principal, remaining_balance, loan_id, created_at")
         .order("created_at", { ascending: false })
 
-      // Only filter by user_id for non-admin users
       if (role !== "admin") {
         loansQuery = loansQuery.eq("user_id", userId)
         paymentsQuery = paymentsQuery.eq("user_id", userId)
@@ -39,46 +39,58 @@ export function LoanOverview({ userId, role }: LoanOverviewProps) {
 
       const totalLoanTaken = loans?.reduce((sum, loan) => sum + Number(loan.loan_amount), 0) || 0
 
-      const totalPaid =payments?.reduce((sum, payment) => {return (sum +
-          Number(payment.monthly_emi || 0) +
-          Number(payment.additional_principal || 0)
-        )
+      const totalPaid = payments?.reduce((sum, payment) => {
+        return sum + Number(payment.monthly_emi || 0) + Number(payment.additional_principal || 0)
       }, 0) || 0
-
 
       const activeLoans = loans?.filter((loan) => loan.status === "active") || []
       let pendingBalance = 0
 
-      // For each active loan, get the latest payment record's remaining_balance
       for (const loan of activeLoans) {
         const latestPayment = payments?.find((payment) => payment.loan_id === loan.id)
         if (latestPayment) {
           pendingBalance += Number(latestPayment.remaining_balance)
         } else {
-          // If no payment record exists yet, use the loan amount as pending
           pendingBalance += Number(loan.loan_amount)
         }
       }
 
       setStats({ totalLoanTaken, totalPaid, pendingBalance })
 
-      // Calculate percentages relative to total loan amount
-      // Interest Paid and Pending Balance should add up to 100%
       const data = [
         { name: "Paid (EMI + Extra)", value: totalPaid, color: "#10b981" },
         { name: "Pending Balance", value: pendingBalance, color: "#f97316" },
       ].filter((item) => item.value > 0)
-
-
-      console.log("Loan Overview - Total Loan:", totalLoanTaken)
-      console.log("Loan Overview - Interest Paid:",  totalPaid, `(${(( totalPaid / totalLoanTaken) * 100).toFixed(2)}%)`)
-      console.log("Loan Overview - Pending Balance:", pendingBalance, `(${((pendingBalance / totalLoanTaken) * 100).toFixed(2)}%)`)
 
       setChartData(data)
       setIsLoading(false)
     }
 
     fetchData()
+
+    // Set up real-time listener for loan_payments changes
+    subscription = supabase
+      .channel("loan_payments_changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "loan_payments",
+          ...(role !== "admin" && { filter: `user_id=eq.${userId}` }),
+        },
+        () => {
+          console.log("[v0] Payment changed, refetching loan overview data")
+          fetchData()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      if (subscription) {
+        subscription.unsubscribe()
+      }
+    }
   }, [userId, role])
 
   return (

@@ -1,7 +1,7 @@
 -- Drop existing function
 DROP FUNCTION IF EXISTS initialize_new_month(TEXT, UUID);
 
--- Recreate function with history preservation
+-- Recreate function with logic to apply previous month's EMI and additional principal
 CREATE OR REPLACE FUNCTION initialize_new_month(p_period_key TEXT, p_created_by UUID)
 RETURNS void
 LANGUAGE plpgsql
@@ -26,6 +26,8 @@ DECLARE
   v_available_loan_amount NUMERIC;
   v_previous_period_key TEXT;
   v_previous_month_record RECORD;
+  v_previous_month_emi NUMERIC;
+  v_previous_month_additional_principal NUMERIC;
 BEGIN
   -- Extract year and month from period_key (format: YYYY-MM)
   v_period_year := CAST(SPLIT_PART(p_period_key, '-', 1) AS INTEGER);
@@ -39,7 +41,6 @@ BEGIN
   END IF;
 
   -- Archive current month records to history before deleting
-  -- This preserves all past month data for reports and audits
   INSERT INTO monthly_loan_records_history (
     id, user_id, member_id, total_loan_taken, additional_principal,
     monthly_interest_income, new_loan_taken, total_loan_outstanding,
@@ -56,9 +57,9 @@ BEGIN
     penalty, available_loan_amount, status, period_year, period_month,
     period_key, created_at, updated_at, now()
   FROM monthly_loan_records
-  WHERE period_key != p_period_key; -- Archive all periods except the one being initialized
+  WHERE period_key != p_period_key;
 
-  -- Now delete existing records for this period to allow re-initialization
+  -- Delete existing records for this period to allow re-initialization
   DELETE FROM monthly_loan_records 
   WHERE period_key = p_period_key;
 
@@ -69,11 +70,29 @@ BEGIN
     INNER JOIN loans l ON l.user_id = p.id
     ORDER BY p.id
   LOOP
-    -- Get current loan amount (remaining balance)
+    -- Get current loan amount from loans table (remaining balance after any new loans)
     SELECT COALESCE(SUM(remaining_balance), 0)
     INTO v_total_loan_taken
     FROM loans
     WHERE user_id = v_user_record.user_id;
+
+    -- Get previous month's EMI payments (to reduce opening balance)
+    SELECT COALESCE(SUM(monthly_emi), 0)
+    INTO v_previous_month_emi
+    FROM loan_payments
+    WHERE user_id = v_user_record.user_id
+      AND period_key = v_previous_period_key;
+
+    -- Get previous month's additional principal payments (to reduce opening balance)
+    SELECT COALESCE(SUM(additional_principal), 0)
+    INTO v_previous_month_additional_principal
+    FROM loan_payments
+    WHERE user_id = v_user_record.user_id
+      AND period_key = v_previous_period_key;
+
+    -- Apply previous month's EMI and additional principal to reduce opening balance
+    -- This is the key fix: EMI and additional principal reduce NEXT month's opening balance
+    v_total_loan_taken := GREATEST(0, v_total_loan_taken - v_previous_month_emi - v_previous_month_additional_principal);
 
     -- Get principal collected from payments for THIS month using period_key
     SELECT COALESCE(SUM(principal_paid), 0)
@@ -103,13 +122,13 @@ BEGIN
     WHERE user_id = v_user_record.user_id
       AND period_key = p_period_key;
 
-    -- Calculate penalty (if any penalty tracking system is in place)
+    -- Calculate penalty
     v_penalty := 0;
 
-    -- Calculate total income for current month (principal + interest + emi + subscription)
+    -- Calculate total income for current month
     v_total_income_current_month := v_principal_collected + v_interest_collected + v_monthly_emi_collected + v_monthly_subscription;
 
-    -- Fetch previous month's record from HISTORY table first, then fallback to current table
+    -- Fetch previous month's record
     SELECT *
     INTO v_previous_month_record
     FROM monthly_loan_records_history
@@ -118,7 +137,6 @@ BEGIN
     ORDER BY archived_at DESC
     LIMIT 1;
 
-    -- If not found in history, check current table (for first-time initialization)
     IF v_previous_month_record IS NULL THEN
       SELECT *
       INTO v_previous_month_record
@@ -136,16 +154,16 @@ BEGIN
       v_previous_month_total_loan_outstanding := 0;
     END IF;
 
-    -- Calculate outstanding balance (current remaining balance)
+    -- Calculate outstanding balance (after applying previous month's payments)
     v_total_loan_outstanding := v_total_loan_taken;
 
     -- Calculate difference
     v_difference := v_total_income_current_month - v_previous_month_total_income;
 
-    -- Calculate available loan amount as Total Pool (400,000) - Outstanding Balance
+    -- Calculate available loan amount
     v_available_loan_amount := 400000 - v_total_loan_outstanding;
 
-    -- Insert monthly record only if user has payments or previous balance
+    -- Insert monthly record
     IF v_total_income_current_month > 0 OR v_previous_month_total_loan_outstanding > 0 OR v_total_loan_outstanding > 0 THEN
       INSERT INTO monthly_loan_records (
         user_id,
@@ -170,8 +188,8 @@ BEGIN
       ) VALUES (
         v_user_record.user_id,
         v_user_record.member_id,
-        v_total_loan_outstanding,
-        v_principal_collected,
+        v_total_loan_taken,
+        v_previous_month_additional_principal,
         v_interest_collected,
         0,
         v_total_loan_outstanding,

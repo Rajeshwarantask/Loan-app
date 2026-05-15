@@ -2,6 +2,7 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { EditMonthlyRecordDialog } from "./edit-monthly-record-dialog"
+import { DeleteMonthlyRecordDialog } from "./delete-monthly-record-dialog"
 
 interface Profile {
   id: string
@@ -13,7 +14,8 @@ interface Profile {
 interface MonthlyRecord {
   id: string
   user_id: string
-  month_year: string
+  member_id: string | null
+  period_key: string
   period_month: number
   period_year: number
   status: string
@@ -87,7 +89,7 @@ export function MonthlyRecordTable({ records, monthYear }: MonthlyRecordTablePro
         <TableBody>
           {sortedRecords.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={19} className="text-center py-8 text-muted-foreground">
+              <TableCell colSpan={17} className="text-center py-8 text-muted-foreground">
                 No records found for this month
               </TableCell>
             </TableRow>
@@ -97,7 +99,7 @@ export function MonthlyRecordTable({ records, monthYear }: MonthlyRecordTablePro
                 <TableCell className="font-medium px-2 md:px-4">{record.profiles?.member_id || "N/A"}</TableCell>
                 <TableCell className="px-2 md:px-4">{record.profiles?.full_name || "Unknown"}</TableCell>
                 <TableCell className="text-right px-2 md:px-4">
-                  {formatCurrency(record.previous_month_total_loan_outstanding)}
+                  {formatCurrency(record.total_loan_taken)}
                 </TableCell>
                 <TableCell className="text-right px-2 md:px-4">{formatCurrency(record.additional_principal)}</TableCell>
                 <TableCell className="text-right px-2 md:px-4">{formatCurrency(record.new_loan_taken)}</TableCell>
@@ -131,7 +133,10 @@ export function MonthlyRecordTable({ records, monthYear }: MonthlyRecordTablePro
                   </Badge>
                 </TableCell>
                 <TableCell className="text-right px-2 md:px-4">
-                  <EditMonthlyRecordDialog record={record} />
+                  <div className="flex items-center justify-end gap-2">
+                    <EditMonthlyRecordDialog record={record} />
+                    <DeleteMonthlyRecordDialog record={record} />
+                  </div>
                 </TableCell>
               </TableRow>
             ))

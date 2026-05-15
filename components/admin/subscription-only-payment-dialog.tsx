@@ -113,6 +113,7 @@ export function SubscriptionOnlyPaymentDialog({
         loan_id: referenceLoanId,
         user_id: user.id,
         member_id: memberIdToUse, // Use fetched member_id
+        full_name: user.full_name, // Add full_name for audit trail
         payment_date: new Date().toISOString(),
         interest_paid: 0,
         amount: subscription,
@@ -124,7 +125,6 @@ export function SubscriptionOnlyPaymentDialog({
         period_key: periodKey,
         status: "paid",
         monthly_subscription: subscription,
-        principal_paid: 0,
         penalty: penalty, // Added penalty field
       })
 

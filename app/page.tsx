@@ -1,9 +1,23 @@
 import Link from "next/link"
+import { redirect } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import Image from "next/image"
+import { createClient } from "@/lib/supabase/server"
 
-export default function HomePage() {
+export default async function HomePage() {
+  const supabase = await createClient()
+
+  // Check if user is authenticated
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  // If authenticated, redirect to dashboard
+  if (user) {
+    redirect("/dashboard")
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-green-50 via-white to-green-50 p-4">
       <Card className="w-full max-w-md">

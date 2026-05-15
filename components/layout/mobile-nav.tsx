@@ -17,12 +17,15 @@ import {
   TrendingUp,
   Database,
   Smartphone,
+  Calculator,
+  Radio,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { UserRole } from "@/lib/types"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
+import { RoleSwitcher } from "@/components/layout/role-switcher"
 
 interface MobileNavProps {
   role: UserRole
@@ -33,10 +36,13 @@ export function MobileNav({ role, userName }: MobileNavProps) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
 
+  const effectiveView = role === "admin" ? "admin" : "user"
+
   const allUserLinks = [
     { href: "/dashboard", label: "Dashboard", icon: Home },
     { href: "/loans", label: "My Loans", icon: FileText },
     { href: "/request-loan", label: "Request Loan", icon: HandCoins },
+    { href: "/calculator", label: "Calculator", icon: Calculator },
     { href: "/notices", label: "Notices", icon: Bell },
     { href: "/contact", label: "Contact Admin", icon: Phone },
     { href: "/app-alerts", label: "App & Alerts", icon: Smartphone },
@@ -49,10 +55,13 @@ export function MobileNav({ role, userName }: MobileNavProps) {
     { href: "/admin/loans", label: "Loan Management", icon: CreditCard },
     { href: "/admin/monthly-cycles", label: "Monthly Cycles", icon: Calendar },
     { href: "/admin/requests", label: "Loan Requests", icon: ClipboardList },
+    { href: "/admin/prediction-bill", label: "Prediction Bill", icon: FileText },
     { href: "/admin/cash-bill", label: "Cash Bill", icon: FileText },
+    { href: "/admin/calculator", label: "Calculator", icon: Calculator },
     { href: "/admin/uuid-migration", label: "UUID Migration", icon: Database },
     { href: "/investments", label: "Investment", icon: TrendingUp },
     { href: "/admin/notices", label: "Manage Notices", icon: Bell },
+    { href: "/admin/push-test", label: "Push Notifications", icon: Radio },
     { href: "/contact", label: "Contact", icon: Phone },
     { href: "/settings", label: "Profile", icon: User },
   ]
@@ -71,8 +80,8 @@ export function MobileNav({ role, userName }: MobileNavProps) {
     { href: "/settings", label: "Profile", icon: User },
   ]
 
-  const allLinks = role === "admin" ? allAdminLinks : allUserLinks
-  const bottomLinks = role === "admin" ? bottomAdminLinks : bottomUserLinks
+  const allLinks = effectiveView === "admin" ? allAdminLinks : allUserLinks
+  const bottomLinks = effectiveView === "admin" ? bottomAdminLinks : bottomUserLinks
 
   return (
     <>
@@ -86,7 +95,12 @@ export function MobileNav({ role, userName }: MobileNavProps) {
           <SheetHeader>
             <SheetTitle className="text-left">Menu</SheetTitle>
           </SheetHeader>
-          <nav className="mt-6 flex flex-col gap-1">
+          {role === "admin" && (
+            <div className="mt-4">
+              <RoleSwitcher />
+            </div>
+          )}
+          <nav className="mt-4 flex flex-col gap-1">
             {allLinks.map((link) => {
               const Icon = link.icon
               const isActive = pathname === link.href

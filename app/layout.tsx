@@ -1,11 +1,13 @@
 import type React from "react"
 import type { Metadata, Viewport } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
+import Script from "next/script"
 import "./globals.css"
 import { PWARegister } from "@/components/pwa/pwa-register"
 import { InstallPrompt } from "@/components/pwa/install-prompt"
 import { Toaster } from "@/components/ui/toaster"
 import { ChunkErrorHandler } from "@/components/chunk-error-handler"
+import { NotificationToast } from "@/components/notification-toast"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -55,37 +57,20 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Vizhuthugal" />
-        <script
+        <Script
+          id="pwa-init"
+          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{
             __html: `
-              // FIX #3 & #5: Register service worker as early as possible
               if ('serviceWorker' in navigator) {
-                window.addEventListener('load', () => {
-                  navigator.serviceWorker.register('/sw.js').then(reg => {
-                    console.log('[PWA] Early SW registration successful');
-                  }).catch(err => {
-                    console.warn('[PWA] Early SW registration failed:', err);
+                window.addEventListener('load', function() {
+                  navigator.serviceWorker.register('/sw.js').catch(function(err) {
+                    console.warn('[PWA] SW registration failed:', err);
                   });
                 });
               }
-              
-              // FIX #4: Mark user interaction
-              let hasInteracted = false;
-              const markInteraction = () => {
-                if (!hasInteracted) {
-                  hasInteracted = true;
-                  console.log('[PWA] User interaction detected');
-                  document.removeEventListener('click', markInteraction);
-                  document.removeEventListener('scroll', markInteraction);
-                }
-              };
-              document.addEventListener('click', markInteraction, { once: true });
-              document.addEventListener('scroll', markInteraction, { once: true });
-              
-              // Chunk error handling
               window.addEventListener('error', function(e) {
                 if (e.message && (e.message.includes('Failed to load chunk') || e.message.includes('Cannot find module'))) {
-                  console.error('[v0] Chunk loading error detected, reloading...');
                   window.location.href = window.location.origin;
                 }
               });
@@ -99,6 +84,7 @@ export default function RootLayout({
           {children}
           <InstallPrompt />
           <Toaster />
+          <NotificationToast />
         </ChunkErrorHandler>
       </body>
     </html>

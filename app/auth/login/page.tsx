@@ -26,7 +26,22 @@ export default function LoginPage() {
     if (errorParam === "no_profile") {
       setError("Your account does not have access to this system. Please contact the administrator.")
     }
-  }, [searchParams])
+
+    // Check if user is already authenticated
+    const checkAuth = async () => {
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      
+      if (user) {
+        // User is already logged in, redirect to dashboard
+        router.push("/dashboard")
+      }
+    }
+    
+    checkAuth()
+  }, [searchParams, router])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()

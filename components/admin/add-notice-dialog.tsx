@@ -21,6 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Upload, X } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import Image from "next/image"
+import { triggerNotification } from "@/lib/server-actions/notifications"
 
 interface AddNoticeDialogProps {
   adminId: string
@@ -114,6 +115,20 @@ export function AddNoticeDialog({ adminId }: AddNoticeDialogProps) {
       })
 
       if (noticeError) throw noticeError
+
+      // Get all member user IDs and send notice notification via server action
+      const { data: members } = await supabase.from("profiles").select("id").eq("role", "member")
+
+      if (members && members.length > 0) {
+        const memberIds = members.map((m: any) => m.id)
+        triggerNotification({
+          type: "notice",
+          userIds: memberIds,
+          title: title,
+          body: content,
+          data: { type: "notice", priority: priority },
+        }).catch((err) => console.error("[v0] Failed to send notice notification:", err))
+      }
 
       setOpen(false)
       setSelectedImage(null)

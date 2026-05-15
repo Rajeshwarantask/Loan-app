@@ -21,8 +21,10 @@ export function CollectionStatsCharts({ role }: CollectionStatsChartsProps) {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
+    const supabase = createClient()
+    let subscription: any
+
     async function fetchData() {
-      const supabase = createClient()
       const currentDate = new Date()
       const currentPeriodKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`
 
@@ -63,7 +65,7 @@ export function CollectionStatsCharts({ role }: CollectionStatsChartsProps) {
         { name: "Without Top-up", value: 100 - additionalLoanPercentage, fill: "#7dd3fc" },
       ])
 
-      // Get additional principal stats - count users who paid extra principal
+      // Get additional principal stats
       const usersWithAdditionalPrincipal = new Set(
         payments?.filter((p) => Number(p.additional_principal || 0) > 0).map((p) => p.user_id),
       ).size
@@ -80,6 +82,41 @@ export function CollectionStatsCharts({ role }: CollectionStatsChartsProps) {
     }
 
     fetchData()
+
+    // Set up real-time listener for payment changes
+    subscription = supabase
+      .channel("payment_collection_changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "loan_payments",
+        },
+        () => {
+          console.log("[v0] Payment changed, refetching collection stats")
+          fetchData()
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "additional_loan",
+        },
+        () => {
+          console.log("[v0] Additional loan changed, refetching collection stats")
+          fetchData()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      if (subscription) {
+        subscription.unsubscribe()
+      }
+    }
   }, [role])
 
   if (isLoading) {

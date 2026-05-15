@@ -63,7 +63,7 @@ export function DownloadMonthlyReportButton({ monthYear, records }: DownloadMont
       totalOutstanding: records.reduce((sum, r) => sum + (r.total_loan_outstanding ?? 0), 0),
       totalPreviousIncome: records.reduce((sum, r) => sum + (r.previous_month_total_income ?? 0), 0),
       totalDifference: records.reduce((sum, r) => sum + (r.difference ?? 0), 0),
-      totalOpeningBalance: records.reduce((sum, r) => sum + (r.previous_month_total_loan_outstanding ?? 0), 0),
+      totalOpeningBalance: records.reduce((sum, r) => sum + (r.total_loan_taken ?? 0), 0),
       totalAvailableLoan: records.reduce((sum, r) => sum + (r.available_loan_amount ?? 0), 0),
     }
 
@@ -71,7 +71,7 @@ export function DownloadMonthlyReportButton({ monthYear, records }: DownloadMont
     const data = sortedRecords.map((record) => ({
       "V ID": record.profiles?.member_id || "N/A",
       Name: record.profiles?.full_name || "Unknown",
-      "Opening Balance": record.previous_month_total_loan_outstanding,
+      "Opening Balance": record.total_loan_taken,
       "Additional Principal": record.additional_principal,
       "New Loans Issued": record.new_loan_taken,
       "Total Loan Outstanding": record.total_loan_outstanding,

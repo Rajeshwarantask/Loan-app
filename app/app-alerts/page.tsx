@@ -5,6 +5,7 @@ import { MobileNav } from "@/components/layout/mobile-nav"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { NotificationPreferences } from "@/components/settings/notification-preferences"
 import { InstallAppButton } from "@/components/app-alerts/install-app-button"
+import { UpdateAppButton } from "@/components/app-alerts/update-app-button"
 
 export default async function AppAlertsPage() {
   const supabase = await createClient()
@@ -42,6 +43,17 @@ export default async function AppAlertsPage() {
             </CardHeader>
             <CardContent>
               <InstallAppButton />
+            </CardContent>
+          </Card>
+
+          {/* Update App Section */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Update App</CardTitle>
+              <CardDescription>Keep your app up to date with the latest features and improvements</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <UpdateAppButton />
             </CardContent>
           </Card>
 

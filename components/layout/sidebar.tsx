@@ -15,10 +15,13 @@ import {
   TrendingUp,
   Database,
   Smartphone,
+  Radio,
+  Calculator,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { UserRole } from "@/lib/types"
 import { LogoutButton } from "@/components/auth/logout-button"
+import { RoleSwitcher } from "@/components/layout/role-switcher"
 
 interface SidebarProps {
   role: UserRole
@@ -32,6 +35,7 @@ export function Sidebar({ role, userName }: SidebarProps) {
     { href: "/dashboard", label: "Dashboard", icon: Home },
     { href: "/loans", label: "My Loans", icon: FileText },
     { href: "/request-loan", label: "Request Loan", icon: DollarSign },
+    { href: "/calculator", label: "Calculator", icon: Calculator },
     { href: "/notices", label: "Notices", icon: Bell },
     { href: "/app-alerts", label: "App & Alerts", icon: Smartphone },
     { href: "/contact", label: "Contact Admin", icon: MessageSquare },
@@ -43,10 +47,13 @@ export function Sidebar({ role, userName }: SidebarProps) {
     { href: "/admin/loans", label: "Loan Management", icon: FileText },
     { href: "/admin/monthly-cycles", label: "Monthly Cycles", icon: Calendar },
     { href: "/admin/requests", label: "Loan Requests", icon: DollarSign },
+    { href: "/admin/prediction-bill", label: "Prediction Bill", icon: FileText },
     { href: "/admin/cash-bill", label: "Cash Bill", icon: FileText },
+    { href: "/admin/calculator", label: "Calculator", icon: Calculator },
     { href: "/admin/uuid-migration", label: "UUID Migration", icon: Database },
     { href: "/investments", label: "Investment", icon: TrendingUp },
     { href: "/admin/notices", label: "Manage Notices", icon: Bell },
+    { href: "/admin/push-test", label: "Push Notifications", icon: Radio },
   ]
 
   const links = role === "admin" ? adminLinks : userLinks
@@ -60,13 +67,16 @@ export function Sidebar({ role, userName }: SidebarProps) {
   return (
     <aside className="hidden w-64 border-r bg-background md:block">
       <div className="flex h-full flex-col">
-        <div className="border-b p-6">
-          <h2 className="text-lg font-semibold">Community Loans</h2>
-          <p className="text-sm text-muted-foreground">{userName}</p>
-          <p className="text-xs text-muted-foreground capitalize">{role}</p>
+        <div className="border-b p-4 space-y-3">
+          <div>
+            <h2 className="text-lg font-semibold">Community Loans</h2>
+            <p className="text-sm text-muted-foreground">{userName}</p>
+            <p className="text-xs text-muted-foreground capitalize">{role}</p>
+          </div>
+          {role === "admin" && <RoleSwitcher />}
         </div>
 
-        <nav className="flex-1 space-y-1 p-4">
+        <nav className="flex-1 space-y-1 overflow-y-auto p-4">
           {links.map((link) => {
             const Icon = link.icon
             const isActive = pathname === link.href

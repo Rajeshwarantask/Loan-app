@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
 
     const { data: loans, error: loansError } = await supabase
       .from("loans")
-      .select("user_id, loan_amount, remaining_balance, interest_rate, status")
+      .select("user_id, loan_amount, interest_rate, status")
       .in("user_id", userIdsFromPayments)
 
     console.log("[v0] Loans found for users with payments:", loans?.length || 0)
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
 
     const { data: payments, error: paymentsDetailError } = await supabase
       .from("loan_payments")
-      .select("user_id, monthly_subscription, monthly_emi")
+      .select("user_id, monthly_subscription, monthly_emi, interest_paid")
       .in("user_id", userIds)
       .eq("period_key", currentPeriodKey)
 
@@ -124,13 +124,14 @@ export async function POST(request: NextRequest) {
           name: profile?.full_name || "",
           voucher_no: profile?.member_id || "",
           monthly_installment: payment?.monthly_subscription || 2100,
-          total_loan_balance: loan?.remaining_balance || 0, // 0 for subscription-only
+          total_loan_balance: loan?.loan_amount || 0, // 0 for subscription-only
           monthly_emi: payment?.monthly_emi || 0, // 0 for subscription-only
+          interest_paid: payment?.interest_paid || 0, // Interest for this period (works for all users)
           fine: 0,
           monthly_installment_amount: payment?.monthly_subscription || 2100,
-          loan_balance: loan?.remaining_balance || 0,
-          total_loan: loan?.remaining_balance || 0,
-          available_loan: loan ? 400000 - (loan.remaining_balance || 0) : 0, // 0 for subscription-only
+          loan_balance: loan?.loan_amount || 0,
+          total_loan: loan?.loan_amount || 0,
+          available_loan: loan ? 400000 - (loan.loan_amount || 0) : 0, // 0 for subscription-only
         }
       })
       .sort((a, b) => {
@@ -220,6 +221,7 @@ export async function POST(request: NextRequest) {
       const monthlyInstallment = safeNum(user.monthly_installment)
       const totalLoan = safeNum(user.total_loan_balance) // This is now total_loan_outstanding
       const monthlyEmi = safeNum(user.monthly_emi) // This is previous_month_principal_received
+      const interest = safeNum(user.interest_paid) // Use actual interest_paid from payment record
       const fine = safeNum(user.fine)
       const availableLoan = safeNum(user.available_loan)
 
@@ -285,10 +287,7 @@ export async function POST(request: NextRequest) {
 
       ws.getCell(firstData + 2, leftCol).value = "Interest"
       const interestCell = ws.getCell(firstData + 2, leftCol + 1)
-      interestCell.value = {
-        formula: `${totalLoanCell.address}*0.015`,
-        result: Math.round(totalLoan * 0.015),
-      }
+      interestCell.value = interest
       interestCell.numFmt = indianNumFmt
       interestCell.alignment = { horizontal: "right", vertical: "middle" }
 
@@ -315,7 +314,7 @@ export async function POST(request: NextRequest) {
       const totalCell = ws.getCell(totalRowIndex, leftCol + 1)
       totalCell.value = {
         formula: `SUM(${monthlyInstallmentCell.address},${interestCell.address},${monthlyEmiCell.address},${fineCell.address})`,
-        result: monthlyInstallment + Math.round(totalLoan * 0.015) + monthlyEmi + fine,
+        result: monthlyInstallment + interest + monthlyEmi + fine,
       }
       totalCell.font = { bold: true }
       totalCell.numFmt = indianNumFmt
