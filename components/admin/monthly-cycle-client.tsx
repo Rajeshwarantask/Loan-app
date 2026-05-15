@@ -40,6 +40,7 @@ interface MonthlyRecord {
   previous_month_total_loan_outstanding: number
   available_loan_amount: number
   profiles: Profile
+  additional_loan_amount: number
 }
 
 interface MonthlyCycleClientProps {

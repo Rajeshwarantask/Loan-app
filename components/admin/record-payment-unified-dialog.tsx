@@ -1,7 +1,11 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect } from "react"
+
+import type React from "react"
+import { useState, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
+import { triggerNotification } from "@/lib/server-actions/notifications"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -34,13 +38,21 @@ interface RecordPaymentUnifiedDialogProps {
   }
   isMarked?: boolean
   onPaymentRecorded?: () => void
+  backfillMonth?: number
+  backfillYear?: number
 }
 
 export function RecordPaymentUnifiedDialog({
   loan,
   isMarked = false,
   onPaymentRecorded,
+  backfillMonth,
+  backfillYear,
 }: RecordPaymentUnifiedDialogProps) {
+  const now = new Date()
+  const currentRealMonth = now.getMonth() + 1
+  const currentRealYear = now.getFullYear()
+
   const [open, setOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -54,6 +66,12 @@ export function RecordPaymentUnifiedDialog({
   const [accumulatedInterest, setAccumulatedInterest] = useState(0)
   const [accumulatedSubscription, setAccumulatedSubscription] = useState(0)
 
+  // Use backfill period from parent if provided, otherwise default to current month
+  const selectedMonth = backfillMonth ?? currentRealMonth
+  const selectedYear = backfillYear ?? currentRealYear
+  const selectedPeriodKey = `${selectedYear}-${String(selectedMonth).padStart(2, "0")}`
+  const isBackfill = selectedMonth !== currentRealMonth || selectedYear !== currentRealYear
+
   const defaultEmi = 5000
 
   const [emiPayment, setEmiPayment] = useState(defaultEmi.toString())
@@ -65,19 +83,15 @@ export function RecordPaymentUnifiedDialog({
   const additionalPrincipal = Number(additionalPrincipalPayment) || 0
   const newLoan = Number(newLoanAmount) || 0
 
-  const finalRemainingBalance = Math.max(0, principalRemaining - emi - additionalPrincipal + newLoan)
-  // Interest should be calculated on balance BEFORE new loan is added (for current month)
-  // New loan will affect NEXT month's interest calculation
-  const balanceForCurrentInterest = Math.max(0, principalRemaining - emi - additionalPrincipal)
+  // EMI and Additional principal will reduce NEXT month's balance, not this month
+  // Current month's balance remains unchanged for display purposes
+  const finalRemainingBalance = Math.max(0, principalRemaining + newLoan)
+  // Interest should be calculated on current month's opening balance (before any payments)
+  // EMI, additional principal, and new loan will affect NEXT month's balance and interest
+  const balanceForCurrentInterest = principalRemaining
   const currentMonthInterest = Math.max(0, Math.round((balanceForCurrentInterest * loan.interest_rate) / 100))
   const totalInterestDue = accumulatedInterest + currentMonthInterest
   const totalSubscriptionDue = accumulatedSubscription + 2100
-
-  console.log("[v0] totalSubscriptionDue calculation:", {
-    accumulatedSubscription,
-    current: 2100,
-    total: totalSubscriptionDue,
-  })
 
   const handleAdditionalPrincipalChange = (value: string) => {
     setAdditionalPrincipalPayment(value)
@@ -110,7 +124,7 @@ export function RecordPaymentUnifiedDialog({
       checkLastMonthPayment()
       fetchAccumulatedUnpaidAmounts()
     }
-  }, [open])
+  }, [open, selectedMonth, selectedYear])
 
   const fetchAccumulatedUnpaidAmounts = async () => {
     try {
@@ -178,12 +192,35 @@ export function RecordPaymentUnifiedDialog({
   const checkLastMonthPayment = async () => {
     try {
       const supabase = createClient()
-      const now = new Date()
-      const lastMonth = now.getMonth() === 0 ? 12 : now.getMonth()
-      const lastMonthYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()
+      // Use the period BEFORE the selected backfill period, not before today
+      const lastMonth = selectedMonth === 1 ? 12 : selectedMonth - 1
+      const lastMonthYear = selectedMonth === 1 ? selectedYear - 1 : selectedYear
       const lastMonthPeriodKey = `${lastMonthYear}-${String(lastMonth).padStart(2, "0")}`
 
       console.log("[v0] Checking payment for last month:", lastMonthPeriodKey)
+
+      // Check if loan was created before last month to determine if penalty should apply
+      const { data: loanData, error: loanError } = await supabase
+        .from("loans")
+        .select("created_at")
+        .eq("id", loan.id)
+        .single()
+
+      if (loanError) {
+        console.error("[v0] Error fetching loan creation date:", loanError)
+        setMissedLastMonthPayment(false)
+        return
+      }
+
+      const loanCreatedDate = new Date(loanData.created_at)
+      const lastMonthStart = new Date(lastMonthYear, lastMonth - 1, 1)
+      
+      // If loan was created in or after last month, no penalty should apply
+      if (loanCreatedDate >= lastMonthStart) {
+        console.log("[v0] Loan is new (created after last month start), no penalty check needed")
+        setMissedLastMonthPayment(false)
+        return
+      }
 
       const { data: lastMonthPayment, error } = await supabase
         .from("loan_payments")
@@ -275,11 +312,13 @@ export function RecordPaymentUnifiedDialog({
     try {
       const supabase = createClient()
 
-      // Fetch the most recent payment balance
+      // Find the most recent paid period STRICTLY BEFORE the selected period
+      // Walk backwards — handles gaps where e.g. Feb has no data, so use Jan
       const { data: paymentData, error: paymentError } = await supabase
         .from("loan_payments")
         .select("remaining_balance, period_key, period_month, period_year")
         .eq("user_id", loan.user_id)
+        .lt("period_key", selectedPeriodKey) // strictly before the selected period
         .order("period_year", { ascending: false })
         .order("period_month", { ascending: false })
         .limit(1)
@@ -290,51 +329,50 @@ export function RecordPaymentUnifiedDialog({
         return
       }
 
-      let balanceToUse = loan.loan_amount
-
       if (paymentData && paymentData.length > 0) {
-        const mostRecentPayment = paymentData[0]
-        balanceToUse = mostRecentPayment.remaining_balance || loan.loan_amount
+        const lastPayment = paymentData[0]
 
-        // Fetch additional loans taken from the last payment period onwards
-        const { data: additionalLoans, error: loanError } = await supabase
+        // Opening Balance for this month = 
+        // Last period's remaining_balance (closing balance)
+        // + additional_loan taken in last period
+        // - additional_principal paid in last period
+        let openingBalance = lastPayment.remaining_balance
+
+        console.log("[v0] Selected period:", selectedPeriodKey, "Found prior period:", lastPayment.period_key, "Closing balance:", lastPayment.remaining_balance)
+
+        // Add any top-up loans taken in the last period
+        const { data: additionalLoans } = await supabase
           .from("additional_loan")
-          .select("additional_loan_amount, period_year, period_month")
+          .select("additional_loan_amount")
           .eq("user_id", loan.user_id)
-          .gte("period_year", mostRecentPayment.period_year)
-          .filter(
-            "period_month",
-            "gte",
-            mostRecentPayment.period_month
-          )
+          .eq("period_key", lastPayment.period_key)
 
-        if (!loanError && additionalLoans && additionalLoans.length > 0) {
-          const additionalLoanAmount = additionalLoans.reduce((sum, al) => sum + (Number(al.additional_loan_amount) || 0), 0)
-          balanceToUse += additionalLoanAmount
+        const additionalLoanSum = (additionalLoans || []).reduce(
+          (sum, al) => sum + (Number(al.additional_loan_amount) || 0), 0
+        )
 
-          console.log(
-            "[v0] RecordPayment - Balance from period:",
-            mostRecentPayment.period_key,
-            "base balance:",
-            mostRecentPayment.remaining_balance,
-            "additional loans:",
-            additionalLoanAmount,
-            "total for next month:",
-            balanceToUse,
-          )
-        } else {
-          console.log(
-            "[v0] RecordPayment - using balance from period:",
-            mostRecentPayment.period_key,
-            "balance:",
-            balanceToUse,
-          )
-        }
+        // Subtract additional principal paid in the last period
+        const { data: additionalPrincipalRows } = await supabase
+          .from("loan_payments")
+          .select("additional_principal")
+          .eq("user_id", loan.user_id)
+          .eq("period_key", lastPayment.period_key)
+
+        const additionalPrincipalSum = (additionalPrincipalRows || []).reduce(
+          (sum, lp) => sum + (Number(lp.additional_principal) || 0), 0
+        )
+
+        openingBalance = openingBalance + additionalLoanSum - additionalPrincipalSum
+
+        console.log("[v0] Opening balance calc: closing", lastPayment.remaining_balance, "+ additional_loan", additionalLoanSum, "- additional_principal", additionalPrincipalSum, "= final", openingBalance)
+
+        setPrincipalRemaining(Math.max(0, openingBalance))
       } else {
-        console.log("[v0] RecordPayment - no payment history (first month), using loan_amount:", loan.loan_amount)
+        // No payment history — brand new member, first month
+        // loans.loan_amount is the current outstanding (set at creation, kept in sync)
+        console.log("[v0] No prior payment found for selected period", selectedPeriodKey, "Using loan_amount:", loan.loan_amount)
+        setPrincipalRemaining(loan.loan_amount)
       }
-
-      setPrincipalRemaining(balanceToUse)
     } catch (err) {
       console.error("[v0] Error in fetchMostRecentBalance:", err)
       setPrincipalRemaining(loan.loan_amount)
@@ -345,16 +383,12 @@ export function RecordPaymentUnifiedDialog({
     setCheckingPayment(true)
     try {
       const supabase = createClient()
-      const now = new Date()
-      const currentMonth = now.getMonth() + 1
-      const currentYear = now.getFullYear()
-      const periodKey = `${currentYear}-${String(currentMonth).padStart(2, "0")}`
 
       const { data, error } = await supabase
         .from("loan_payments")
         .select("id")
         .eq("loan_id", loan.id)
-        .eq("period_key", periodKey)
+        .eq("period_key", selectedPeriodKey)
         .limit(1)
 
       if (error) {
@@ -421,11 +455,14 @@ export function RecordPaymentUnifiedDialog({
 
       const currentPrincipal = principalRemaining
 
-      const newRemainingBalance = Math.max(0, currentPrincipal - emi - additionalPrincipal + newLoan)
+      // Closing balance = Opening Balance − EMI only
+      // additionalPrincipal and newLoan affect NEXT month's opening, not this month's closing
+      const newRemainingBalance = Math.max(0, currentPrincipal - emi)
 
-      const now = new Date()
-      const paymentMonth = now.getMonth() + 1
-      const paymentYear = now.getFullYear()
+      // Use selected period (supports backfill for missed months)
+      const paymentMonth = selectedMonth
+      const paymentYear = selectedYear
+      const periodKey = selectedPeriodKey
 
       const totalAmount = interest + emi + additionalPrincipal + subscription
 
@@ -441,7 +478,7 @@ export function RecordPaymentUnifiedDialog({
         remaining_balance: newRemainingBalance,
         period_month: paymentMonth,
         period_year: paymentYear,
-        period_key: `${paymentYear}-${String(paymentMonth).padStart(2, "0")}`,
+        period_key: periodKey,
         status: "paid",
         monthly_subscription: subscription,
         penalty: penalty,
@@ -456,10 +493,11 @@ export function RecordPaymentUnifiedDialog({
         const { error: penaltyError } = await supabase.from("penalties").insert({
           user_id: loan.user_id,
           member_id: loan.member_id || loan.profiles?.member_id,
+          full_name: loan.profiles?.full_name || "Unknown",
           penalty_type: "payment",
           amount: penalty,
           reason: "Penalty payment via monthly payment dialog",
-          period_key: `${paymentYear}-${String(paymentMonth).padStart(2, "0")}`,
+          period_key: periodKey,
           period_month: paymentMonth,
           period_year: paymentYear,
           recorded_by: user.id,
@@ -467,6 +505,16 @@ export function RecordPaymentUnifiedDialog({
 
         if (penaltyError) {
           console.error("[v0] Penalty payment error:", penaltyError)
+        } else {
+          // Send penalty notification via server action
+          console.log("[v0] Sending penalty notification via server action")
+          triggerNotification({
+            type: "penalty",
+            userId: loan.user_id,
+            title: "Penalty Applied",
+            body: `A penalty of ${formatCurrency(penalty)} has been applied to your account.`,
+            data: { type: "penalty_applied", amount: penalty },
+          }).catch((err) => console.error("[v0] Failed to send penalty notification:", err))
         }
       }
 
@@ -487,10 +535,11 @@ export function RecordPaymentUnifiedDialog({
           ? "active"
           : loanData?.status || "active"
 
+      // Keep loans.loan_amount in sync with loan_payments.remaining_balance (both = current outstanding)
       const { error: updateError } = await supabase
         .from("loans")
         .update({
-          remaining_balance: newRemainingBalance,
+          loan_amount: newRemainingBalance,
           status: newStatus,
         })
         .eq("id", loan.id)
@@ -501,35 +550,62 @@ export function RecordPaymentUnifiedDialog({
       }
 
       if (newLoan > 0) {
-        const { error: newLoanError } = await supabase.from("additional_loan").insert({
-          user_id: loan.user_id,
-          member_id: loan.member_id || loan.profiles?.member_id,
-          loan_id: loan.id,
-          additional_loan_amount: newLoan,
-          period_year: paymentYear,
-          period_month: paymentMonth,
-          period_key: `${paymentYear}-${String(paymentMonth).padStart(2, "0")}`,
-        })
+        // Check if additional_loan for this period already exists to prevent duplicates
+        const { data: existingLoan } = await supabase
+          .from("additional_loan")
+          .select("id")
+          .eq("user_id", loan.user_id)
+          .eq("period_key", periodKey)
+          .limit(1)
+          .single()
 
-        if (newLoanError) {
-          console.error("[v0] Additional loan error:", newLoanError)
-          throw new Error("Payment recorded but failed to create additional loan")
-        }
-
-        const { error: updateLoanError } = await supabase
-          .from("loans")
-          .update({
-            remaining_balance: newRemainingBalance,
+        if (!existingLoan) {
+          // Only insert if no existing record for this period
+          const { error: newLoanError } = await supabase.from("additional_loan").insert({
+            user_id: loan.user_id,
+            member_id: loan.member_id || loan.profiles?.member_id,
+            full_name: loan.profiles?.full_name || "Unknown",
+            loan_id: loan.id,
+            additional_loan_amount: newLoan,
+            period_year: paymentYear,
+            period_month: paymentMonth,
+            period_key: periodKey,
           })
-          .eq("id", loan.id)
 
-        if (updateLoanError) {
-          console.error("[v0] Loan update error:", updateLoanError)
-          throw new Error("Additional loan created but failed to update remaining balance")
+          if (newLoanError) {
+            console.error("[v0] Additional loan error:", newLoanError)
+            throw new Error("Payment recorded but failed to create additional loan")
+          }
+        } else {
+          console.warn("[v0] Additional loan for this period already exists, skipping duplicate")
         }
+        // No need to update loans.remaining_balance again — loan_payments is the source of truth
+        // The new loan will be picked up by fetchMostRecentBalance on next open via additional_loan table
       }
 
       await checkAndAutoInitializeNextMonth(supabase, paymentYear, paymentMonth)
+
+      // Send payment confirmation notification via server action
+      console.log("[v0] ========== PAYMENT NOTIFICATION ==========")
+      console.log("[v0] Loan belongs to user ID:", loan.user_id)
+      console.log("[v0] Loan user name:", loan.profiles?.name || "Unknown")
+      console.log("[v0] Sending notification to user ID:", loan.user_id)
+      console.log("[v0] Notification details:", {
+        userId: loan.user_id,
+        amount: totalAmount,
+        remainingBalance: newRemainingBalance,
+      })
+      console.log("[v0] ==========================================")
+      
+      const notificationResult = await triggerNotification({
+        type: "payment",
+        userId: loan.user_id,
+        title: "Payment Confirmed",
+        body: `Payment of ${formatCurrency(totalAmount)} has been recorded. Remaining balance: ${formatCurrency(newRemainingBalance)}`,
+        data: { type: "payment_confirmation", amount: totalAmount },
+      })
+      
+      console.log("[v0] Notification result:", notificationResult)
 
       setOpen(false)
       onPaymentRecorded?.()

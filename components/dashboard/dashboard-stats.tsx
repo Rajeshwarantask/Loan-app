@@ -30,72 +30,55 @@ export async function DashboardStats({ userId, role }: DashboardStatsProps) {
   const currentPeriodKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`
 
   if (role === "admin") {
-    // Admin stats
-    const { data: loans } = await supabase.from("loans").select("loan_amount, remaining_balance, status, created_at")
+    // Admin stats - all from loan_payments for this month
+    const { data: loans } = await supabase.from("loans").select("loan_amount, status, created_at")
 
     const { data: payments } = await supabase
       .from("loan_payments")
       .select(
-        "interest_paid, principal_paid, additional_principal, monthly_emi, monthly_subscription, status, period_key, created_at",
+        "user_id, interest_paid, principal_paid, additional_principal, monthly_emi, monthly_subscription, status, period_key, remaining_balance, created_at",
       )
 
     const { data: requests } = await supabase.from("loan_requests").select("status")
 
     const { data: investments } = await supabase.from("investments").select("amount")
 
-    const totalLoansIssued =
-      loans?.reduce((sum, loan) => {
-        if (loan.status === "active") {
-          return sum + Number(loan.remaining_balance || 0)
-        }
-        return sum
-      }, 0) || 0
-
-    const totalInterestCollected =
-      payments?.reduce((sum, payment) => {
-        if (payment.status === "paid" && payment.period_key === currentPeriodKey) {
-          return sum + Number(payment.interest_paid || 0)
-        }
-        return sum
-      }, 0) || 0
-
     const activeLoans = loans?.filter((loan) => loan.status === "active").length || 0
     const pendingRequests = requests?.filter((req) => req.status === "pending").length || 0
 
-    const currentMonthEmi =
-      payments?.reduce((sum, payment) => {
-        if (payment.status === "paid" && payment.period_key === currentPeriodKey) {
-          return sum + Number(payment.monthly_emi || 0)
+    // All figures are for this month's paid records only
+    const thisMonthPaid = payments?.filter(
+      (p) => p.status === "paid" && p.period_key === currentPeriodKey
+    ) || []
+
+    // Total Loans Issued = sum of loan_amount from loans table for all active loans
+    // loans.loan_amount = current outstanding balance, kept in sync after every payment
+    const totalLoansIssued =
+      loans?.reduce((sum, loan) => {
+        if (loan.status === "active") {
+          return sum + Number(loan.loan_amount || 0)
         }
         return sum
       }, 0) || 0
 
-    const totalPrincipalCollected =
-      payments?.reduce((sum, payment) => {
-        if (payment.status === "paid" && payment.period_key === currentPeriodKey) {
-          return sum + Number(payment.principal_paid || 0) + Number(payment.additional_principal || 0)
-        }
-        return sum
-      }, 0) || 0
-
-    const currentMonthSubscription =
-      payments?.reduce((sum, payment) => {
-        if (payment.status === "paid" && payment.period_key === currentPeriodKey) {
-          return sum + Number(payment.monthly_subscription || 0)
-        }
-        return sum
-      }, 0) || 0
-
+    const totalInterestCollected = thisMonthPaid.reduce((sum, p) => sum + Number(p.interest_paid || 0), 0)
+    const currentMonthEmi = thisMonthPaid.reduce((sum, p) => sum + Number(p.monthly_emi || 0), 0)
+    const totalPrincipalCollected = thisMonthPaid.reduce(
+      (sum, p) => sum + Number(p.principal_paid || 0) + Number(p.additional_principal || 0),
+      0
+    )
+    const currentMonthSubscription = thisMonthPaid.reduce((sum, p) => sum + Number(p.monthly_subscription || 0), 0)
     const totalSubscriptionReceived = currentMonthSubscription
 
-    const totalTurnover = totalSubscriptionReceived + totalLoansIssued + currentMonthEmi + totalInterestCollected
+    const totalTurnover = totalSubscriptionReceived + totalLoansIssued + currentMonthEmi + totalInterestCollected + totalPrincipalCollected
 
     const investedAmount = investments?.reduce((sum, investment) => sum + Number(investment.amount || 0), 0) || 0
 
     const remainingTurnover = totalTurnover - investedAmount
 
-    const monthlyInHandClosing = totalLoansIssued + totalInterestCollected
-    const cagrRate = 0 // For now
+    const monthlyInHandClosing = currentMonthEmi + totalSubscriptionReceived + totalInterestCollected + totalPrincipalCollected
+
+    const cagrRate = 6.2 // For now
 
     return (
       <>
@@ -226,15 +209,11 @@ export async function DashboardStats({ userId, role }: DashboardStatsProps) {
     )
   }
 
-  // User stats - fetch comprehensive payment data
+  // User stats - all from loan_payments + loans only, no monthly_loan_records
   const { data: loans } = await supabase
     .from("loans")
-    .select("loan_amount, remaining_balance, status, interest_rate")
+    .select("loan_amount, status, interest_rate, created_at")
     .eq("user_id", userId)
-  
-  const { count: memberCount } = await supabase
-    .from("profiles")
-    .select("id", { count: "exact", head: true })
 
   const { data: payments } = await supabase
     .from("loan_payments")
@@ -243,69 +222,94 @@ export async function DashboardStats({ userId, role }: DashboardStatsProps) {
     )
     .eq("user_id", userId)
 
-    // Total Loans Issued (active loans remaining balance)
-  const totalLoansIssued =
-    loans?.reduce((sum, loan) => {
-      if (loan.status === "active") {
-        return sum + Number(loan.remaining_balance || 0)
-      }
-      return sum
+  const { data: allActiveLoans } = await supabase
+  .from("loans")
+  .select("loan_amount")
+  .eq("status", "active")
+
+  // 1. Total Loan: use latest paid payment's remaining_balance, fallback to loans.loan_amount (current outstanding)
+  const sortedPayments = [...(payments || [])].sort((a, b) =>
+    b.period_key > a.period_key ? 1 : b.period_key < a.period_key ? -1 : 0
+  )
+  const latestPayment = sortedPayments[0]
+  const activeLoan = loans?.find((l) => l.status === "active")
+  const totalLoan = latestPayment
+    ? Number(latestPayment.remaining_balance || 0)
+    : Number(activeLoan?.loan_amount || 0)
+
+  const totalLoansIssuedAll =
+    allActiveLoans?.reduce((sum, loan) => {
+      return sum + Number(loan.loan_amount || 0)
     }, 0) || 0
 
-  // Total Interest Collected (current month, paid)
-  const totalInterestCollected =
-    payments?.reduce((sum, payment) => {
-      if (payment.status === "paid" && payment.period_key === currentPeriodKey) {
-        return sum + Number(payment.interest_paid || 0)
-      }
-      return sum
-    }, 0) || 0
-
-  const monthlyInHandClosing = totalLoansIssued + totalInterestCollected
-
-  // 1. Total Loan (current month closing balance from latest payment)
-  const latestPayment = payments?.sort((a, b) => {
-    if (b.period_key > a.period_key) return 1
-    if (b.period_key < a.period_key) return -1
-    return 0
-  })[0]
-  const totalLoan = latestPayment ? Number(latestPayment.remaining_balance || 0) : 0
-
-  // 2. Interest (this month's interest payment)
+  // 2. Interest this month
   const interestThisMonth =
-    payments?.reduce((sum, payment) => {
-      if (payment.period_key === currentPeriodKey) {
-        return sum + Number(payment.interest_paid || 0)
-      }
+    payments?.reduce((sum, p) => {
+      if (p.period_key === currentPeriodKey) return sum + Number(p.interest_paid || 0)
       return sum
     }, 0) || 0
 
-  // 3. EMI (total EMI paid - all time)
-  const totalEMI = payments?.reduce((sum, payment) => sum + Number(payment.monthly_emi || 0), 0) || 0
+  // 3. EMI total paid all time
+  const totalEMI = payments?.reduce((sum, p) => sum + Number(p.monthly_emi || 0), 0) || 0
 
-  // 4. Subscription (total subscription paid - all time)
-  const totalSubscription = payments?.reduce((sum, payment) => sum + Number(payment.monthly_subscription || 0), 0) || 0
+  // 4. Subscription total paid all time
+  const totalSubscription = payments?.reduce((sum, p) => sum + Number(p.monthly_subscription || 0), 0) || 0
 
-  // 5. Principal (total principal paid - all time)
+  // 5. Principal total paid all time
   const totalPrincipal =
-    payments?.reduce((sum, payment) => {
-      return sum + Number(payment.principal_paid || 0) + Number(payment.additional_principal || 0)
-    }, 0) || 0
+    payments?.reduce((sum, p) => sum + Number(p.principal_paid || 0) + Number(p.additional_principal || 0), 0) || 0
 
-  // 6. Available Loan (subscription * 10 - current loan balance)
-  const availableLoan = (400000 - totalLoan)
+  // 6. Available Loan
+  const availableLoan = 400000 - totalLoan
 
-  // 7. Penalty (total penalty paid from loan_payments - all time)
-  const totalPenalty = payments?.reduce((sum, payment) => sum + Number(payment.penalty || 0), 0) || 0
+  // 7. Penalty total paid all time
+  const totalPenalty = payments?.reduce((sum, p) => sum + Number(p.penalty || 0), 0) || 0
 
-  // 8. Total Earnings/Person (set to 0 for now)
-  const totalEarnings = memberCount && memberCount > 0 ? Math.round(monthlyInHandClosing / memberCount) : 0
+  // 8. Total Earnings/Person
+  // Opening balance = last month's remaining_balance (from loan_payments), or loan amount if new
+  const prevDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1)
+  const prevPeriodKey = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`
+  const lastMonthPayment = sortedPayments.find((p) => p.period_key === prevPeriodKey)
+  const openingBalance = lastMonthPayment
+    ? Number(lastMonthPayment.remaining_balance || 0)
+    : Number(loans?.find((l) => l.status === "active")?.loan_amount || 0)
+
+  // monthlyInHandClosing = openingBalance + interest this month
+  const monthlyInHandClosing = openingBalance + interestThisMonth
+  const CONSTANT_MEMBER_COUNT = 44
+  const totalEarnings = Math.round(totalLoansIssuedAll / CONSTANT_MEMBER_COUNT)
+  // Total Payment = Interest + EMI + Subscription (all-time)
+  const totalPayment =
+    (payments?.reduce((sum, p) => {
+      return (
+        sum +
+        Number(p.interest_paid || 0) +
+        Number(p.monthly_emi || 0) +
+        Number(p.monthly_subscription || 0)
+      )
+    }, 0) || 0)
 
   return (
     <>
       {/* Top row - 4 stats */}
       <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-        {/* Order: 4, 2, 3, 5 = Subscription, Interest, EMI, Principal */}
+        {/* Order: 4, 2, 3, 5 = Total Payment ,Subscription, Interest, EMI */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Total Payment
+            </CardTitle>
+            <Wallet className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold">
+              {formatCurrency(totalPayment)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Interest + EMI + Subscription
+            </p>
+          </CardContent>
+        </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Subscription</CardTitle>
@@ -339,6 +343,11 @@ export async function DashboardStats({ userId, role }: DashboardStatsProps) {
           </CardContent>
         </Card>
 
+      </div>
+
+      {/* Bottom row - 4 stats */}
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Principal</CardTitle>
@@ -349,54 +358,61 @@ export async function DashboardStats({ userId, role }: DashboardStatsProps) {
             <p className="text-xs text-muted-foreground mt-1">Total paid</p>
           </CardContent>
         </Card>
-      </div>
 
-      {/* Bottom row - 4 stats */}
-      <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
-        {/* Order: 1, 8, 6, 7 = Total Loan, Total Earnings, Available Loan, Penalty */}
+        {/* Total Loan (Available shown inside) */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Loan</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Total Loan
+            </CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-semibold">{formatCurrency(totalLoan)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Current balance</p>
+            <div className="text-2xl font-semibold">
+              {formatCurrency(totalLoan)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Available: {formatCurrency(availableLoan)}
+            </p>
           </CardContent>
         </Card>
 
+        {/* Total Earnings */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Earnings</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Total Earnings
+            </CardTitle>
             <Award className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-semibold">{formatCurrency(totalEarnings)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Per person</p>
+            <div className="text-2xl font-semibold">
+              {formatCurrency(totalEarnings)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Per person
+            </p>
           </CardContent>
         </Card>
 
+        {/* Penalty */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Available Loan</CardTitle>
-            <Wallet className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold">{formatCurrency(availableLoan)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Can borrow</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Penalty</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Penalty
+            </CardTitle>
             <AlertCircle className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-semibold">{formatCurrency(totalPenalty)}</div>
-            <p className="text-xs text-muted-foreground mt-1">Total paid</p>
+            <div className="text-2xl font-semibold">
+              {formatCurrency(totalPenalty)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Total paid
+            </p>
           </CardContent>
         </Card>
+
       </div>
     </>
   )

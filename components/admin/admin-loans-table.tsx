@@ -8,8 +8,9 @@ import { formatCurrency } from "@/lib/utils/loan-calculator"
 import { format } from "date-fns"
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { Eye } from "lucide-react"
+import { Eye, Clock, CheckCircle2 } from "lucide-react"
 import { RecordPaymentUnifiedDialog } from "./record-payment-unified-dialog"
+import { DeleteLoanDialog } from "./delete-loan-dialog"
 
 interface Loan {
   id: string
@@ -17,7 +18,6 @@ interface Loan {
   interest_rate: number
   status: string
   created_at: string
-  remaining_balance?: number
   profiles: {
     full_name: string
     email: string
@@ -33,6 +33,8 @@ interface Loan {
 
 interface AdminLoansTableProps {
   loans: Loan[]
+  backfillMonth?: number
+  backfillYear?: number
 }
 
 interface InterestStatus {
@@ -48,10 +50,11 @@ interface MonthClosingBalance {
   [loanId: string]: number | null
 }
 
-export function AdminLoansTable({ loans }: AdminLoansTableProps) {
+export function AdminLoansTable({ loans, backfillMonth, backfillYear }: AdminLoansTableProps) {
   const [recordStatusMap, setRecordStatusMap] = useState<Record<string, InterestStatus>>({})
   const [monthOpeningBalances, setMonthOpeningBalances] = useState<MonthOpeningBalance>({})
   const [monthClosingBalances, setMonthClosingBalances] = useState<MonthClosingBalance>({})
+  const [latestClosingBalances, setLatestClosingBalances] = useState<Record<string, number | null>>({})
   const [selectedLoan, setSelectedLoan] = useState<Loan | null>(null)
   const [loanDetailsOpen, setLoanDetailsOpen] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -65,70 +68,100 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
     const fetchLoanData = async () => {
       const supabase = createClient()
       const now = new Date()
-      const currentMonth = now.getMonth() + 1
-      const currentYear = now.getFullYear()
+      const realMonth = now.getMonth() + 1
+      const realYear = now.getFullYear()
+
+      // Use backfill period if provided, otherwise current month
+      const currentMonth = backfillMonth ?? realMonth
+      const currentYear = backfillYear ?? realYear
       const currentPeriodKey = `${currentYear}-${String(currentMonth).padStart(2, "0")}`
 
-      let prevMonth = currentMonth - 1
-      let prevYear = currentYear
-      if (prevMonth === 0) {
-        prevMonth = 12
-        prevYear = currentYear - 1
-      }
+  const statusMap: Record<string, InterestStatus> = {}
+  const openingBalances: MonthOpeningBalance = {}
+  const closingBalances: MonthClosingBalance = {}
+  const latestClosingBalances: Record<string, number | null> = {} // For "Remaining Principal" display
+  
+  const paymentPromises = loans.map(async (loan) => {
+    const { data: currentPayment } = await supabase
+      .from("loan_payments")
+      .select("period_key, period_month, period_year, remaining_balance")
+      .eq("loan_id", loan.id)
+      .eq("period_key", currentPeriodKey)
+      .limit(1)
+      .single()
 
-      const statusMap: Record<string, InterestStatus> = {}
-      const openingBalances: MonthOpeningBalance = {}
-      const closingBalances: MonthClosingBalance = {}
+    if (currentPayment) {
+      // Format month year from period_key (the actual period paid for), not payment_date (when it was recorded)
+      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+      const monthYear = `${monthNames[currentPayment.period_month - 1]} ${currentPayment.period_year}`
+      statusMap[loan.id] = { marked: true, monthYear }
+      closingBalances[loan.id] = currentPayment.remaining_balance
+    } else {
+      statusMap[loan.id] = { marked: false, monthYear: "" }
+      closingBalances[loan.id] = null
+    }
 
-      const paymentPromises = loans.map(async (loan) => {
-        const { data: currentPayment } = await supabase
-          .from("loan_payments")
-          .select("payment_date, remaining_balance")
-          .eq("loan_id", loan.id)
-          .eq("period_key", currentPeriodKey)
-          .limit(1)
-          .single()
+    // Fetch the LATEST closing balance (most recent payment) for "Remaining Principal" display
+    const { data: latestPayment } = await supabase
+      .from("loan_payments")
+      .select("remaining_balance")
+      .eq("loan_id", loan.id)
+      .order("period_year", { ascending: false })
+      .order("period_month", { ascending: false })
+      .limit(1)
+      .single()
 
-        if (currentPayment) {
-          const paymentDate = new Date(currentPayment.payment_date)
-          const monthYear = paymentDate.toLocaleDateString("en-US", { month: "short", year: "numeric" })
-          statusMap[loan.id] = { marked: true, monthYear }
-          closingBalances[loan.id] = currentPayment.remaining_balance
-        } else {
-          statusMap[loan.id] = { marked: false, monthYear: "" }
-          closingBalances[loan.id] = null
+    latestClosingBalances[loan.id] = latestPayment?.remaining_balance || null
+
+        // Calculate previous month's period_key (one month before the selected backfill period)
+        let previousMonth = currentMonth - 1
+        let previousYear = currentYear
+        if (previousMonth < 1) {
+          previousMonth = 12
+          previousYear = currentYear - 1
         }
+        const previousPeriodKey = `${previousYear}-${String(previousMonth).padStart(2, "0")}`
 
-        const { data: previousPayments } = await supabase
+        // Opening balance = Previous period's closing balance + previous period's additional loans - previous period's additional principal
+        const { data: previousPayment } = await supabase
           .from("loan_payments")
           .select("remaining_balance, period_key, period_year, period_month")
           .eq("user_id", loan.user_id)
-          .or(`period_year.lt.${currentYear},and(period_year.eq.${currentYear},period_month.lt.${currentMonth})`)
-          .order("period_year", { ascending: false })
-          .order("period_month", { ascending: false })
+          .eq("period_key", previousPeriodKey)
           .limit(1)
           .single()
 
-        if (previousPayments) {
-          let balanceWithAdditionalLoans = previousPayments.remaining_balance
+        if (previousPayment) {
+          let balanceWithAdditionalLoans = previousPayment.remaining_balance
           
-          // Fetch additional loans taken in the last payment month only
+          // Fetch additional loans taken in the previous period
           // (these should be added to this month's opening balance)
           const { data: additionalLoans } = await supabase
             .from("additional_loan")
-            .select("additional_loan_amount, period_year, period_month")
+            .select("additional_loan_amount")
             .eq("user_id", loan.user_id)
-            .eq("period_year", previousPayments.period_year)
-            .eq("period_month", previousPayments.period_month)
+            .eq("period_key", previousPeriodKey)
 
           if (additionalLoans && additionalLoans.length > 0) {
             const additionalLoanAmount = additionalLoans.reduce((sum, al) => sum + (Number(al.additional_loan_amount) || 0), 0)
             balanceWithAdditionalLoans += additionalLoanAmount
-            console.log("[v0] AdminLoansTable - Additional loans for", loan.profiles.member_id, ":", additionalLoanAmount, "Total:", balanceWithAdditionalLoans)
           }
 
-          openingBalances[loan.id] = balanceWithAdditionalLoans
+          // Subtract additional principal paid in the previous period
+          const { data: additionalPrincipalRows } = await supabase
+            .from("loan_payments")
+            .select("additional_principal")
+            .eq("user_id", loan.user_id)
+            .eq("period_key", previousPeriodKey)
+
+          if (additionalPrincipalRows && additionalPrincipalRows.length > 0) {
+            const additionalPrincipalSum = additionalPrincipalRows.reduce((sum, lp) => sum + (Number(lp.additional_principal) || 0), 0)
+            balanceWithAdditionalLoans -= additionalPrincipalSum
+          }
+
+          openingBalances[loan.id] = Math.max(0, balanceWithAdditionalLoans)
         } else {
+          // No prior payment found, use loan amount
           openingBalances[loan.id] = loan.loan_amount
         }
 
@@ -140,12 +173,14 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
       setRecordStatusMap(statusMap)
       setMonthOpeningBalances(openingBalances)
       setMonthClosingBalances(closingBalances)
+      // Store latest closing balances for display (not affected by backfill period selection)
+      setLatestClosingBalances(latestClosingBalances)
     }
 
     if (loans.length > 0) {
       fetchLoanData()
     }
-  }, [loans, refreshKey])
+  }, [loans, refreshKey, backfillMonth, backfillYear])
 
   return (
     <div className="overflow-x-auto -mx-2 md:mx-0">
@@ -165,9 +200,13 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
         <TableBody>
           {loans.map((loan) => {
             const recordStatus = recordStatusMap[loan.id]
-            const currentBalance = monthOpeningBalances[loan.id] ?? loan.loan_amount
-            const totalLoan = currentBalance
-            const principalRemaining = monthClosingBalances[loan.id] ?? currentBalance
+            // monthOpeningBalances = opening balance for the selected backfill period
+            // monthClosingBalances = closing balance for the selected backfill period
+            // latestClosingBalances = most recent closing balance (fallback for display)
+            const openingBalance = monthOpeningBalances[loan.id] ?? loan.loan_amount
+            const closingBalance = monthClosingBalances[loan.id] ?? latestClosingBalances[loan.id] ?? loan.loan_amount
+            const totalLoan = openingBalance  // Opening balance for selected period
+            const principalRemaining = closingBalance  // Closing balance for selected period
 
             return (
               <TableRow key={loan.id}>
@@ -179,18 +218,17 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
                 <TableCell className="font-semibold px-2 md:px-4">{formatCurrency(principalRemaining)}</TableCell>
                 <TableCell className="px-2 md:px-4 hidden md:table-cell">{loan.interest_rate}%</TableCell>
                 <TableCell className="px-2 md:px-4">
-                  <Badge
-                    variant={
-                      loan.status === "active"
-                        ? "default"
-                        : loan.status === "completed" || loan.status === "closed"
-                          ? "secondary"
-                          : "destructive"
-                    }
-                    className="px-2"
-                  >
-                    {loan.status}
-                  </Badge>
+                  <div className="flex items-center justify-center" title={loan.status}>
+                    {loan.status === "active" ? (
+                      <Clock className="h-6 w-6 text-blue-500" strokeWidth={1.5} />
+                    ) : loan.status === "completed" || loan.status === "closed" ? (
+                      <CheckCircle2 className="h-6 w-6 text-green-500" strokeWidth={1.5} />
+                    ) : (
+                      <Badge variant="destructive" className="px-2 text-xs">
+                        {loan.status}
+                      </Badge>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell className="px-2 md:px-4 hidden md:table-cell">
                   {recordStatus?.marked ? (
@@ -205,6 +243,10 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
                 </TableCell>
                 <TableCell className="text-right px-2 md:px-4">
                   <div className="flex flex-col md:flex-row items-end md:items-center justify-end gap-1 md:gap-2">
+                    <DeleteLoanDialog 
+                      loan={loan}
+                      onLoanDeleted={handlePaymentRecorded}
+                    />
                     <Dialog
                       open={loanDetailsOpen && selectedLoan?.id === loan.id}
                       onOpenChange={(open) => {
@@ -234,15 +276,15 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
                                 <div className="text-sm">{selectedLoan.profiles.email}</div>
                               </div>
                               <div>
-                                <div className="text-sm font-medium text-muted-foreground">Total Loan Taken</div>
+                                <div className="text-sm font-medium text-muted-foreground">Opening Balance</div>
                                 <div className="text-lg font-bold">
-                                  {formatCurrency(Number(selectedLoan.loan_amount))}
+                                  {formatCurrency(monthOpeningBalances[selectedLoan.id] ?? selectedLoan.loan_amount)}
                                 </div>
                               </div>
                               <div>
-                                <div className="text-sm font-medium text-muted-foreground">Principal Remaining</div>
+                                <div className="text-sm font-medium text-muted-foreground">Closing Balance</div>
                                 <div className="text-lg font-bold">
-                                  {formatCurrency(monthClosingBalances[selectedLoan.id] ?? selectedLoan.loan_amount)}
+                                  {formatCurrency(monthClosingBalances[selectedLoan.id] ?? latestClosingBalances[selectedLoan.id] ?? selectedLoan.loan_amount)}
                                 </div>
                               </div>
                               <div>
@@ -313,6 +355,8 @@ export function AdminLoansTable({ loans }: AdminLoansTableProps) {
                       loan={loan}
                       isMarked={recordStatus?.marked ?? false}
                       onPaymentRecorded={handlePaymentRecorded}
+                      backfillMonth={backfillMonth}
+                      backfillYear={backfillYear}
                     />
                   </div>
                 </TableCell>

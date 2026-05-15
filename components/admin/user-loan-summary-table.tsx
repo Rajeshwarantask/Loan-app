@@ -66,14 +66,17 @@ export function UserLoanSummaryTable({ loans, payments }: UserLoanSummaryTablePr
     const userMap = new Map<string, UserSummary>()
 
     loans.forEach((loan) => {
+      // Guard against undefined profiles
+      if (!loan?.profiles) return
+
       if (!userMap.has(loan.user_id)) {
-        const memberIdDisplay = loan.profiles.member_id || `user-${loan.user_id.substring(0, 8)}`
+        const memberIdDisplay = loan.profiles?.member_id || `user-${loan.user_id.substring(0, 8)}`
 
         userMap.set(loan.user_id, {
           userId: loan.user_id,
           memberIdDisplay,
-          userName: loan.profiles.full_name,
-          email: loan.profiles.email,
+          userName: loan.profiles?.full_name || "Unknown",
+          email: loan.profiles?.email || "Unknown",
           totalLoanAmount: 0,
           totalInterestPaid: 0,
           loanHistory: [],

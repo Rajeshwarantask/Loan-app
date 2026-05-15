@@ -120,7 +120,7 @@ export async function checkAndSendEMIReminders(supabase: any): Promise<{ sent: n
     // Get all active loans
     const { data: loans, error: loansError } = await supabase
       .from("loans")
-      .select("id, user_id, remaining_balance, status, created_at")
+      .select("id, user_id, loan_amount, status, created_at")
       .eq("status", "active")
 
     if (loansError) throw loansError

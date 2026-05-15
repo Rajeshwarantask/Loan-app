@@ -10,6 +10,12 @@ interface User {
   member_id: string
 }
 
+interface AvailableMonth {
+  period_key: string
+  period_year: number
+  period_month: number
+}
+
 export const revalidate = 0
 export const dynamic = "force-dynamic"
 
@@ -22,6 +28,19 @@ export default async function CashBillPage() {
     .select("id, full_name, member_id")
     .not("member_id", "is", null)
     .order("member_id")
+
+  // Fetch available months from loan_payments (distinct period_key values)
+  const { data: availableMonthsData } = await supabase
+    .from("loan_payments")
+    .select("period_key, period_year, period_month")
+    .order("period_key", { ascending: false })
+
+  // Remove duplicates and sort
+  const uniqueMonths = Array.from(
+    new Map(
+      (availableMonthsData || []).map((m) => [m.period_key, { period_key: m.period_key, period_year: m.period_year, period_month: m.period_month }])
+    ).values()
+  ) as AvailableMonth[]
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -38,7 +57,7 @@ export default async function CashBillPage() {
             </div>
           </div>
 
-          <CashBillDownloadClient users={users || []} />
+          <CashBillDownloadClient users={users || []} availableMonths={uniqueMonths} />
         </div>
       </main>
 

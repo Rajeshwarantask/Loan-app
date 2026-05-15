@@ -26,11 +26,14 @@ interface LoanPayment {
   loan_id: string
   user_id: string
   month_year: string
-  principal_paid: number
+  additional_principal: number
   interest_paid: number
   remaining_balance: number
   status: string
   payment_date: string | null
+  monthly_emi: number | null
+  monthly_subscription: number | null
+  period_key: string
 }
 
 interface Loan {
@@ -99,9 +102,10 @@ export function LoanHistoryTable({ payments, loans }: LoanHistoryTableProps) {
     const supabase = createClient()
 
     try {
+      // Fetch current loans.loan_amount and payment details
       const { data: loanData, error: loanFetchError } = await supabase
         .from("loans")
-        .select("remaining_balance, status")
+        .select("loan_amount, status")
         .eq("id", payment.loan_id)
         .single()
 
@@ -109,31 +113,49 @@ export function LoanHistoryTable({ payments, loans }: LoanHistoryTableProps) {
 
       const { data: paymentDetails, error: paymentFetchError } = await supabase
         .from("loan_payments")
-        .select("principal_paid, additional_principal, monthly_emi")
+        .select("additional_principal, monthly_emi, period_key, period_year, period_month")
         .eq("id", payment.id)
         .single()
 
       if (paymentFetchError) throw paymentFetchError
 
-      const totalPrincipalPaid = (paymentDetails.monthly_emi || 0) + (paymentDetails.additional_principal || 0)
-      const restoredBalance = loanData.remaining_balance + totalPrincipalPaid
-
-      const { data: additionalLoanData } = await supabase
-        .from("additional_loan")
-        .select("id, additional_loan_amount")
+      // Find the PREVIOUS period's closing balance (which is the opening for this period being deleted)
+      // This is the source of truth - we want to restore to what it was before this payment
+      let restoredBalance = 0
+      const { data: previousPayment } = await supabase
+        .from("loan_payments")
+        .select("remaining_balance, period_key")
         .eq("user_id", payment.user_id)
-        .eq("period_key", payment.month_year)
-        .maybeSingle()
+        .lt("period_key", paymentDetails.period_key)
+        .order("period_year", { ascending: false })
+        .order("period_month", { ascending: false })
+        .limit(1)
+        .single()
 
-      let finalRestoredBalance = restoredBalance
-      if (additionalLoanData) {
-        finalRestoredBalance = restoredBalance - additionalLoanData.additional_loan_amount
+      if (previousPayment) {
+        // When deleting a payment, simply restore to the previous period's closing balance
+        // This is the source of truth - no adjustments needed
+        restoredBalance = previousPayment.remaining_balance
+      } else {
+        // No prior payment - this is the first period for this loan
+        // Restore to the original loan amount (the opening balance when loan was created)
+        restoredBalance = loanData.loan_amount
       }
 
+      // Fetch and delete additional_loan if it exists for this period
+      const { data: additionalLoanData } = await supabase
+        .from("additional_loan")
+        .select("id")
+        .eq("user_id", payment.user_id)
+        .eq("period_key", paymentDetails.period_key)
+        .maybeSingle()
+
+      // Delete the payment record
       const { error: deletePaymentError } = await supabase.from("loan_payments").delete().eq("id", payment.id)
 
       if (deletePaymentError) throw deletePaymentError
 
+      // Delete associated additional_loan if it exists
       if (additionalLoanData) {
         const { error: deleteAdditionalLoanError } = await supabase
           .from("additional_loan")
@@ -143,13 +165,24 @@ export function LoanHistoryTable({ payments, loans }: LoanHistoryTableProps) {
         if (deleteAdditionalLoanError) throw deleteAdditionalLoanError
       }
 
-      // If the restored balance is > 0, the loan should be active
-      const shouldBeActive = finalRestoredBalance > 0
+      // Also delete any penalties that were recorded for this payment
+      const { error: deletePenaltyError } = await supabase
+        .from("penalties")
+        .delete()
+        .eq("loan_payment_id", payment.id)
+
+      if (deletePenaltyError) {
+        console.warn("[v0] Warning: Failed to delete penalties:", deletePenaltyError)
+        // Don't throw - penalty deletion is not critical
+      }
+
+      // Restore loans.loan_amount to what it was before this payment was made
+      const shouldBeActive = restoredBalance > 0
 
       const { error: updateLoanError } = await supabase
         .from("loans")
         .update({
-          remaining_balance: finalRestoredBalance,
+          loan_amount: Math.max(0, restoredBalance),
           status: shouldBeActive ? "active" : loanData.status,
         })
         .eq("id", payment.loan_id)
@@ -181,7 +214,7 @@ export function LoanHistoryTable({ payments, loans }: LoanHistoryTableProps) {
       <div className="space-y-2 md:space-y-4">
         {loanGroups.map(({ loan, payments: loanPayments }) => {
           const isExpanded = expandedLoan === loan.id
-          const totalPrincipal = loanPayments.reduce((sum, p) => sum + p.principal_paid, 0)
+          const totalPrincipal = loanPayments.reduce((sum, p) => sum + (p.additional_principal || 0), 0)
           const totalInterest = loanPayments.reduce((sum, p) => sum + p.interest_paid, 0)
           const actualDuration = calculateLoanDuration(loan, loanPayments)
 
@@ -201,9 +234,9 @@ export function LoanHistoryTable({ payments, loans }: LoanHistoryTableProps) {
                       </CardTitle>
                     </div>
                     <div className="text-sm text-muted-foreground flex flex-col md:flex-row md:items-center gap-1 md:gap-4">
-                      <span>Loan: {formatCurrency(loan.amount)}</span>
-                      <span>Rate: {loan.interest_rate}%</span>
-                      <span>Duration: {actualDuration}m</span>
+                      <span>Loan: {formatCurrency(loan.amount || 0)}</span>
+                      <span>Rate: {loan.interest_rate || 0}%</span>
+                      <span>Duration: {actualDuration || 0}m</span>
                       <Badge variant={loan.status === "active" ? "default" : "secondary"} className="w-fit">
                         {loan.status}
                       </Badge>
@@ -223,63 +256,94 @@ export function LoanHistoryTable({ payments, loans }: LoanHistoryTableProps) {
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead className="px-2 md:px-4">Month</TableHead>
-                            <TableHead className="px-2 md:px-4">Principal</TableHead>
+                            <TableHead className="px-2 md:px-4">EMI</TableHead>
+                            <TableHead className="px-2 md:px-4 hidden sm:table-cell">Principal</TableHead>
                             <TableHead className="px-2 md:px-4">Interest</TableHead>
+                            <TableHead className="px-2 md:px-4 hidden md:table-cell">Subscription</TableHead>
                             <TableHead className="font-semibold px-2 md:px-4 hidden md:table-cell">Total</TableHead>
                             <TableHead className="px-2 md:px-4 hidden lg:table-cell">Balance</TableHead>
                             <TableHead className="px-2 md:px-4 hidden md:table-cell">Status</TableHead>
-                            <TableHead className="px-2 md:px-4 hidden lg:table-cell">Date</TableHead>
+                            <TableHead className="px-2 md:px-4 hidden lg:table-cell">Period</TableHead>
                             <TableHead className="px-2 md:px-4">Actions</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {loanPayments.map((payment) => (
-                            <TableRow key={payment.id}>
-                              <TableCell className="font-medium px-2 md:px-4">{payment.month_year}</TableCell>
-                              <TableCell className="px-2 md:px-4">{formatCurrency(payment.principal_paid)}</TableCell>
-                              <TableCell className="px-2 md:px-4">{formatCurrency(payment.interest_paid)}</TableCell>
-                              <TableCell className="font-semibold px-2 md:px-4 hidden md:table-cell">
-                                {formatCurrency(payment.principal_paid + payment.interest_paid)}
-                              </TableCell>
-                              <TableCell className="px-2 md:px-4 hidden lg:table-cell">
-                                {formatCurrency(payment.remaining_balance)}
-                              </TableCell>
-                              <TableCell className="px-2 md:px-4 hidden md:table-cell">
-                                <Badge
-                                  variant={payment.status === "paid" ? "default" : "secondary"}
-                                  className="text-sm"
-                                >
-                                  {payment.status}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="px-2 md:px-4 hidden lg:table-cell">
-                                {payment.payment_date ? format(new Date(payment.payment_date), "MMM dd, yyyy") : "N/A"}
-                              </TableCell>
-                              <TableCell className="px-2 md:px-4">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    setDeletePaymentId(payment.id)
-                                  }}
-                                  className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                          <TableRow className="bg-muted/50 font-medium">
-                            <TableCell className="px-2 md:px-4">Total</TableCell>
-                            <TableCell className="px-2 md:px-4">{formatCurrency(totalPrincipal)}</TableCell>
-                            <TableCell className="px-2 md:px-4">{formatCurrency(totalInterest)}</TableCell>
-                            <TableCell className="font-bold px-2 md:px-4 hidden md:table-cell">
-                              {formatCurrency(totalPrincipal + totalInterest)}
-                            </TableCell>
-                            <TableCell colSpan={4} />
-                          </TableRow>
+                          {loanPayments.map((payment) => {
+                            const emi = payment.monthly_emi || 0
+                            const additionalPrincipal = payment.additional_principal || 0
+                            const subscription = payment.monthly_subscription || 0
+                            const totalPayment = emi + payment.interest_paid + subscription
+                            
+                            return (
+                              <TableRow key={payment.id}>
+                                <TableCell className="font-medium px-2 md:px-4">{formatCurrency(emi)}</TableCell>
+                                <TableCell className="px-2 md:px-4 hidden sm:table-cell">
+                                  {formatCurrency(additionalPrincipal)}
+                                </TableCell>
+                                <TableCell className="px-2 md:px-4">{formatCurrency(payment.interest_paid)}</TableCell>
+                                <TableCell className="px-2 md:px-4 hidden md:table-cell">{formatCurrency(subscription)}</TableCell>
+                                <TableCell className="font-semibold px-2 md:px-4 hidden md:table-cell">
+                                  {formatCurrency(totalPayment)}
+                                </TableCell>
+                                <TableCell className="px-2 md:px-4 hidden lg:table-cell">
+                                  {formatCurrency(payment.remaining_balance)}
+                                </TableCell>
+                                <TableCell className="px-2 md:px-4 hidden md:table-cell">
+                                  <Badge
+                                    variant={payment.status === "paid" ? "default" : "secondary"}
+                                    className="text-sm"
+                                  >
+                                    {payment.status}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="px-2 md:px-4 hidden lg:table-cell">
+                                  {payment.period_key ? `${payment.period_key}` : "N/A"}
+                                </TableCell>
+                                <TableCell className="px-2 md:px-4">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setDeletePaymentId(payment.id)
+                                    }}
+                                    className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            )
+                          })}
+                          {(() => {
+                            const totalEMI = loanPayments.reduce((sum, p) => sum + (p.monthly_emi || 0), 0)
+                            const totalAdditionalPrincipal = loanPayments.reduce(
+                              (sum, p) => sum + (p.additional_principal || 0),
+                              0,
+                            )
+                            const totalSubscription = loanPayments.reduce(
+                              (sum, p) => sum + (p.monthly_subscription || 0),
+                              0,
+                            )
+                            const grandTotal = totalEMI + totalInterest + totalSubscription
+
+                            return (
+                              <TableRow className="bg-muted/50 font-medium">
+                                <TableCell className="px-2 md:px-4">{formatCurrency(totalEMI)}</TableCell>
+                                <TableCell className="px-2 md:px-4 hidden sm:table-cell">
+                                  {formatCurrency(totalAdditionalPrincipal)}
+                                </TableCell>
+                                <TableCell className="px-2 md:px-4">{formatCurrency(totalInterest)}</TableCell>
+                                <TableCell className="px-2 md:px-4 hidden md:table-cell">
+                                  {formatCurrency(totalSubscription)}
+                                </TableCell>
+                                <TableCell className="font-bold px-2 md:px-4 hidden md:table-cell">
+                                  {formatCurrency(grandTotal)}
+                                </TableCell>
+                                <TableCell colSpan={4} />
+                              </TableRow>
+                            )
+                          })()}
                         </TableBody>
                       </Table>
                     </div>

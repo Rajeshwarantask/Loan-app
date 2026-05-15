@@ -18,16 +18,10 @@ export interface Loan {
   id: string
   user_id: string
   member_id?: string
-  loan_amount: number
+  loan_amount: number  // current outstanding balance — kept in sync after every payment
   interest_rate: number
-  duration_months: number
   purpose: string | null
   status: "pending" | "approved" | "rejected" | "active" | "completed"
-  remaining_balance: number
-  monthly_emi: number
-  payment_date: string | null
-  requested_at: string
-  approved_at: string | null
   approved_by: string | null
   full_name?: string
   created_at: string

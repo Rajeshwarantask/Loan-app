@@ -97,10 +97,10 @@ export function AddUserDialog() {
               <Label htmlFor="fullName">Full Name</Label>
               <Input id="fullName" name="fullName" required />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" name="email" type="email" required />
-            </div>
+      <div className="space-y-2">
+        <Label htmlFor="email">Email</Label>
+        <Input id="email" name="email" type="email" autoComplete="email" required />
+      </div>
             <div className="space-y-2">
               <Label htmlFor="phone">Phone Number</Label>
               <Input id="phone" name="phone" type="tel" />

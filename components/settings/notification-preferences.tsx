@@ -57,22 +57,58 @@ export function NotificationPreferences({ userId }: NotificationPreferencesProps
         }
       } else {
         // Enable notifications
-        try {
-          const subscription = await subscribeToPushNotifications()
-          if (subscription) {
-            const saved = await savePushSubscription(subscription, userId)
-            if (saved) {
+        console.log("[Notifications] Subscribing to push notifications...")
+        const subscription = await subscribeToPushNotifications()
+        console.log("[Notifications] Subscription obtained:", subscription ? "yes" : "no")
+        
+        if (subscription) {
+          // Push subscription successful
+          console.log("[Notifications] Saving push subscription with userId:", userId)
+          const saved = await savePushSubscription(subscription, userId)
+          console.log("[Notifications] Save result:", saved)
+          
+          if (saved) {
+            setIsEnabled(true)
+            setSuccess(true)
+            setTimeout(() => setSuccess(false), 3000)
+          } else {
+            setError("Failed to save subscription. Please try again.")
+          }
+        } else {
+          // Fallback: Push subscription failed (permission denied), but enable notifications in database anyway
+          console.log("[Notifications] Push subscription unavailable, using fallback opt-in")
+          console.log("[Notifications] Enabling notifications via fallback endpoint for userId:", userId)
+          
+          try {
+            const fallbackResponse = await fetch("/api/notifications/subscribe", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                subscription: null,
+                userId,
+              }),
+            })
+            
+            const fallbackResult = await fallbackResponse.json()
+            console.log("[Notifications] Fallback result:", fallbackResult)
+            
+            if (fallbackResponse.ok) {
               setIsEnabled(true)
               setSuccess(true)
               setTimeout(() => setSuccess(false), 3000)
+              
+              // Show info message about fallback
+              setError(
+                "Notifications enabled! Your browser has notification permissions disabled, but you'll receive notifications when the app is active."
+              )
+              setTimeout(() => setError(null), 5000)
+            } else {
+              setError(fallbackResult.error || "Failed to enable notifications")
             }
-          } else {
-            setError("Failed to enable notifications. Please check your browser permissions.")
+          } catch (fallbackError) {
+            console.error("[Notifications] Fallback error:", fallbackError)
+            setError("Failed to enable notifications. Please try again.")
           }
-        } catch (subscriptionError) {
-          const errorMsg = subscriptionError instanceof Error ? subscriptionError.message : "Failed to enable notifications"
-          setError(errorMsg)
-          console.error("[Notifications] Enable error:", subscriptionError)
         }
       }
     } catch (err) {
@@ -130,9 +166,23 @@ export function NotificationPreferences({ userId }: NotificationPreferencesProps
         </div>
 
         {error && (
-          <div className="flex items-start gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">
+          <div className="flex items-start gap-3 rounded-lg bg-red-50 p-4 text-sm text-red-800 dark:bg-red-950 dark:text-red-200">
             <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-            <p>{error}</p>
+            <div>
+              <p className="font-medium">{error}</p>
+              {error.includes("permission") && (
+                <div className="mt-2 space-y-1 text-xs">
+                  <p className="font-semibold">How to allow notifications:</p>
+                  <ol className="list-inside list-decimal space-y-1">
+                    <li>Look for a notification icon in your browser's address bar</li>
+                    <li>Click it and select "Always allow" or "Allow"</li>
+                    <li>If blocked, check your browser settings → Privacy → Notifications</li>
+                    <li>Add this website to the "Allow" list</li>
+                    <li>Reload the page and try again</li>
+                  </ol>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

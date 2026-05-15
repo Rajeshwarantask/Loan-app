@@ -158,17 +158,17 @@ export function UsersWithoutLoansTable({ users }: UsersWithoutLoansTableProps) {
                     )}
                   </TableCell>
                   <TableCell className="px-2 md:px-4 text-center">
-                    {subscriptionStatus?.marked && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDeletePayment(user.id, user.full_name)}
-                        className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        <span className="sr-only">Delete payment</span>
-                      </Button>
-                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDeletePayment(user.id, user.full_name)}
+                      disabled={!subscriptionStatus?.marked}
+                      className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title={subscriptionStatus?.marked ? "Delete this payment" : "No payment recorded yet"}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      <span className="sr-only">Delete payment</span>
+                    </Button>
                   </TableCell>
                   <TableCell className="text-right px-2 md:px-4">
                     <SubscriptionOnlyPaymentDialog

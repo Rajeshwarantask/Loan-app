@@ -63,7 +63,7 @@ export function LoanRequestsTable({ requests, adminId }: LoanRequestsTableProps)
 
       const { data: existingLoans, error: checkError } = await supabase
         .from("loans")
-        .select("id, loan_amount, remaining_balance")
+        .select("id, loan_amount")
         .eq("user_id", request.user_id)
         .eq("status", "active")
 
@@ -75,12 +75,13 @@ export function LoanRequestsTable({ requests, adminId }: LoanRequestsTableProps)
         console.log("[v0] User has active loan, saving as additional loan")
 
         const activeLoan = existingLoans[0]
-        const newBalance = (activeLoan.remaining_balance || 0) + request.amount
         const newLoanAmount = (activeLoan.loan_amount || 0) + request.amount
 
         const { error: additionalLoanError } = await supabase.from("additional_loan").insert({
           user_id: request.user_id,
+          member_id: request.profiles?.member_id,
           loan_id: activeLoan.id,
+          full_name: request.profiles?.full_name || "Unknown",
           additional_loan_amount: request.amount,
           period_key: format(new Date(), "yyyy-MM"),
           period_month: new Date().getMonth() + 1,
@@ -92,22 +93,28 @@ export function LoanRequestsTable({ requests, adminId }: LoanRequestsTableProps)
         const { error: updateLoanError } = await supabase
           .from("loans")
           .update({
-            loan_amount: newLoanAmount,
-            remaining_balance: newBalance,
+          loan_amount: newLoanAmount,
           })
           .eq("id", activeLoan.id)
 
-        if (updateLoanError) throw updateLoanError
-      } else {
-        console.log("[v0] No active loan found, creating new loan")
+          if (updateLoanError) throw updateLoanError
+        } else {
+          console.log("[v0] No active loan found, creating new loan")
 
-        const { error: loanError } = await supabase.from("loans").insert({
-          user_id: request.user_id,
-          loan_amount: request.amount,
-          remaining_balance: request.amount,
-          interest_rate: 15,
-          status: "active",
-          approved_by: adminId,
+          const today = new Date()
+          const periodKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`
+
+          const { error: loanError } = await supabase.from("loans").insert({
+            user_id: request.user_id,
+            member_id: request.profiles?.member_id,
+            full_name: request.profiles?.full_name || "Unknown",
+            loan_amount: request.amount,
+            interest_rate: 15,
+            status: "active",
+            approved_by: adminId,
+            period_year: today.getFullYear(),
+            period_month: today.getMonth() + 1,
+            period_key: periodKey,
         })
 
         if (loanError) throw loanError
@@ -124,6 +131,20 @@ export function LoanRequestsTable({ requests, adminId }: LoanRequestsTableProps)
         .eq("id", request.id)
 
       if (requestError) throw requestError
+
+      // Send loan approval notification via API
+      const monthlyEMI = (request.amount * 0.15) / 12
+      fetch("/api/notifications/trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "loan_approval",
+          userId: request.user_id,
+          title: "Loan Request Approved",
+          body: `Your loan request of ${request.amount} has been approved. Monthly EMI: ${monthlyEMI.toFixed(2)}`,
+          data: { type: "loan_approval", amount: request.amount },
+        }),
+      }).catch((err) => console.error("[v0] Failed to send approval notification:", err))
 
       router.refresh()
     } catch (error) {
@@ -148,6 +169,19 @@ export function LoanRequestsTable({ requests, adminId }: LoanRequestsTableProps)
         })
         .eq("id", request.id)
 
+      // Send loan rejection notification via API
+      fetch("/api/notifications/trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "loan_rejection",
+          userId: request.user_id,
+          title: "Loan Request Rejected",
+          body: "Your loan request has been reviewed and rejected.",
+          data: { type: "loan_rejection" },
+        }),
+      }).catch((err) => console.error("[v0] Failed to send rejection notification:", err))
+
       router.refresh()
     } catch (error) {
       console.error("[v0] Error quick rejecting:", error)
@@ -169,7 +203,7 @@ export function LoanRequestsTable({ requests, adminId }: LoanRequestsTableProps)
 
       const { data: existingLoans, error: checkError } = await supabase
         .from("loans")
-        .select("id, loan_amount, remaining_balance")
+        .select("id, loan_amount")
         .eq("user_id", reviewDialog.user_id)
         .eq("status", "active")
 
@@ -181,12 +215,13 @@ export function LoanRequestsTable({ requests, adminId }: LoanRequestsTableProps)
         console.log("[v0] User has active loan, saving as additional loan")
 
         const activeLoan = existingLoans[0]
-        const newBalance = (activeLoan.remaining_balance || 0) + finalAmount
-        const newLoanAmount = (activeLoan.loan_amount || 0) + finalAmount
+          const newLoanAmount = (activeLoan.loan_amount || 0) + finalAmount
 
         const { error: additionalLoanError } = await supabase.from("additional_loan").insert({
           user_id: reviewDialog.user_id,
+          member_id: reviewDialog.profiles?.member_id,
           loan_id: activeLoan.id,
+          full_name: reviewDialog.profiles?.full_name || "Unknown",
           additional_loan_amount: finalAmount,
           period_key: format(new Date(), "yyyy-MM"),
           period_month: new Date().getMonth() + 1,
@@ -202,7 +237,6 @@ export function LoanRequestsTable({ requests, adminId }: LoanRequestsTableProps)
           .from("loans")
           .update({
             loan_amount: newLoanAmount,
-            remaining_balance: newBalance,
           })
           .eq("id", activeLoan.id)
 
@@ -213,13 +247,20 @@ export function LoanRequestsTable({ requests, adminId }: LoanRequestsTableProps)
       } else {
         console.log("[v0] No active loan found, creating new loan")
 
+        const today = new Date()
+        const periodKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`
+
         const { error: loanError } = await supabase.from("loans").insert({
           user_id: reviewDialog.user_id,
+          member_id: reviewDialog.profiles?.member_id,
+          full_name: reviewDialog.profiles?.full_name || "Unknown",
           loan_amount: finalAmount,
-          remaining_balance: finalAmount,
           interest_rate: 15,
           status: "active",
           approved_by: adminId,
+          period_year: today.getFullYear(),
+          period_month: today.getMonth() + 1,
+          period_key: periodKey,
         })
 
         if (loanError) {
@@ -247,6 +288,21 @@ export function LoanRequestsTable({ requests, adminId }: LoanRequestsTableProps)
       }
 
       console.log("[v0] Loan request approved successfully")
+
+      // Send loan approval notification via API
+      const monthlyEMI = (finalAmount * 0.15) / 12
+      fetch("/api/notifications/trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "loan_approval",
+          userId: reviewDialog.user_id,
+          title: "Loan Request Approved",
+          body: `Your loan request of ${finalAmount} has been approved. Monthly EMI: ${monthlyEMI.toFixed(2)}`,
+          data: { type: "loan_approval", amount: finalAmount },
+        }),
+      }).catch((err) => console.error("[v0] Failed to send approval notification:", err))
+
       setReviewDialog(null)
       router.refresh()
     } catch (error) {
@@ -273,6 +329,19 @@ export function LoanRequestsTable({ requests, adminId }: LoanRequestsTableProps)
           admin_remark: remark,
         })
         .eq("id", reviewDialog.id)
+
+      // Send loan rejection notification via API
+      fetch("/api/notifications/trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "loan_rejection",
+          userId: reviewDialog.user_id,
+          title: "Loan Request Rejected",
+          body: `Your loan request has been reviewed and rejected. ${remark ? `Reason: ${remark}` : ""}`,
+          data: { type: "loan_rejection", reason: remark },
+        }),
+      }).catch((err) => console.error("[v0] Failed to send rejection notification:", err))
 
       setReviewDialog(null)
       router.refresh()

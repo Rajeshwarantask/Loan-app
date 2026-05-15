@@ -12,12 +12,22 @@ interface User {
   member_id: string
 }
 
-interface CashBillDownloadClientProps {
-  users: User[]
+interface AvailableMonth {
+  period_key: string
+  period_year: number
+  period_month: number
 }
 
-export function CashBillDownloadClient({ users }: CashBillDownloadClientProps) {
+interface CashBillDownloadClientProps {
+  users: User[]
+  availableMonths: AvailableMonth[]
+}
+
+export function CashBillDownloadClient({ users, availableMonths }: CashBillDownloadClientProps) {
   const [selectedUser, setSelectedUser] = useState<string>("all")
+  const [selectedMonth, setSelectedMonth] = useState<string>(
+    availableMonths.length > 0 ? availableMonths[0].period_key : new Date().toISOString().slice(0, 7)
+  )
   const [downloading, setDownloading] = useState(false)
   const [error, setError] = useState<string>("")
 
@@ -31,7 +41,7 @@ export function CashBillDownloadClient({ users }: CashBillDownloadClientProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           selectedUser: selectedUser === "all" ? null : selectedUser,
-          monthYear: new Date().toISOString().slice(0, 7),
+          monthYear: selectedMonth,
         }),
       })
 
@@ -45,7 +55,7 @@ export function CashBillDownloadClient({ users }: CashBillDownloadClientProps) {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
-      a.download = `cash-bill-${selectedUser === "all" ? "all-users" : selectedUser}-${new Date().toISOString().slice(0, 7)}.csv`
+      a.download = `cash-bill-${selectedUser === "all" ? "all-users" : selectedUser}-${selectedMonth}.csv`
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(url)
@@ -92,13 +102,30 @@ export function CashBillDownloadClient({ users }: CashBillDownloadClientProps) {
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">Month</label>
-            <div className="text-sm text-muted-foreground">
-              {new Date().toLocaleDateString("en-US", { year: "numeric", month: "long" })}
-            </div>
+            <label className="text-sm font-medium">Select Month</label>
+            {availableMonths.length > 0 ? (
+              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a month" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableMonths.map((month) => {
+                    const date = new Date(month.period_year, month.period_month - 1)
+                    const monthLabel = date.toLocaleDateString("en-US", { year: "numeric", month: "long" })
+                    return (
+                      <SelectItem key={month.period_key} value={month.period_key}>
+                        {monthLabel}
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+            ) : (
+              <div className="text-sm text-muted-foreground">No payment data available yet</div>
+            )}
           </div>
 
-          <Button onClick={downloadCashBill} disabled={downloading} className="w-full">
+          <Button onClick={downloadCashBill} disabled={downloading || availableMonths.length === 0} className="w-full">
             <FileDown className="mr-2 h-4 w-4" />
             {downloading ? "Generating..." : "Download Cash Bill (CSV)"}
           </Button>

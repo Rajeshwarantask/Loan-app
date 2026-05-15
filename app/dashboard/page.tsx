@@ -11,8 +11,13 @@ import { PaymentProjection } from "@/components/dashboard/payment-projection"
 export const revalidate = 0
 export const dynamic = "force-dynamic"
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string }>
+}) {
   const supabase = await createClient()
+  const resolvedParams = await searchParams
 
   const {
     data: { user },
@@ -27,6 +32,13 @@ export default async function DashboardPage() {
   if (!profile) {
     redirect("/auth/login")
   }
+
+  // Determine effective view: admin can switch to "user" view via ?view=user
+  const currentView: "admin" | "user" =
+    profile.role === "admin" && resolvedParams.view === "user" ? "user" : "admin"
+
+  // Effective role for rendering components
+  const effectiveRole = profile.role === "admin" && currentView === "user" ? "user" : profile.role
 
   const { data: loans } = await supabase
     .from("loans")
@@ -51,19 +63,19 @@ export default async function DashboardPage() {
             <p className="text-sm md:text-base text-muted-foreground">Welcome back, {profile.full_name}</p>
           </div>
 
-          <DashboardStats userId={user.id} role={profile.role} />
+          <DashboardStats userId={user.id} role={effectiveRole} />
 
-          {profile.role === "admin" ? (
+          {effectiveRole === "admin" ? (
             <>
-              <CollectionStatsCharts role={profile.role} />
-              <LoanOverview userId={user.id} role={profile.role} />
+              <CollectionStatsCharts role={effectiveRole} />
+              <LoanOverview userId={user.id} role={effectiveRole} />
             </>
           ) : (
             <>
               <PaymentProjection loans={loans || []} payments={payments || []} />
               <div className="grid gap-6 lg:grid-cols-3">
                 <div className="lg:col-span-2">
-                  <LoanOverview userId={user.id} role={profile.role} />
+                  <LoanOverview userId={user.id} role={effectiveRole} />
                 </div>
                 <div className="lg:col-span-1">
                   <RecentNotices />
@@ -74,7 +86,7 @@ export default async function DashboardPage() {
         </div>
       </main>
 
-      <MobileNav role={profile.role} />
+      <MobileNav role={profile.role} userName={profile.full_name} />
     </div>
   )
 }
