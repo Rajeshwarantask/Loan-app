@@ -15,6 +15,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { VerificationMismatchDialog } from "@/components/admin/verification-mismatch-dialog"
 import { formatCurrency } from "@/lib/utils/loan-calculator"
 import { format, differenceInMonths } from "date-fns"
 import { ChevronDown, ChevronRight, Trash2 } from "lucide-react"
@@ -60,6 +61,21 @@ export function LoanHistoryTable({ payments, loans }: LoanHistoryTableProps) {
   const [expandedLoan, setExpandedLoan] = useState<string | null>(null)
   const [deletePaymentId, setDeletePaymentId] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [mismatchDialog, setMismatchDialog] = useState<{
+    isOpen: boolean
+    periodKey: string
+    method1Value: number
+    method2Value: number
+    pendingPayment: LoanPayment | null
+    selectedMethod: 1 | 2 | null
+  }>({
+    isOpen: false,
+    periodKey: "",
+    method1Value: 0,
+    method2Value: 0,
+    pendingPayment: null,
+    selectedMethod: null,
+  })
 
   const loanGroups = useMemo(() => {
     const groups = new Map<string, { loan: Loan; payments: LoanPayment[] }>()
@@ -102,10 +118,10 @@ export function LoanHistoryTable({ payments, loans }: LoanHistoryTableProps) {
     const supabase = createClient()
 
     try {
-      // Fetch current loans.loan_amount and payment details
+      // Fetch current loans.loan_amount, original_loan_amount and payment details
       const { data: loanData, error: loanFetchError } = await supabase
         .from("loans")
-        .select("loan_amount, status")
+        .select("loan_amount, original_loan_amount, status")
         .eq("id", payment.loan_id)
         .single()
 
@@ -113,14 +129,23 @@ export function LoanHistoryTable({ payments, loans }: LoanHistoryTableProps) {
 
       const { data: paymentDetails, error: paymentFetchError } = await supabase
         .from("loan_payments")
-        .select("additional_principal, monthly_emi, period_key, period_year, period_month")
+        .select("additional_principal, monthly_emi, period_key, period_year, period_month, remaining_balance")
         .eq("id", payment.id)
         .single()
 
       if (paymentFetchError) throw paymentFetchError
 
+      // Fetch the new_loan_amount from additional_loan table for this period
+      const { data: additionalLoanData } = await supabase
+        .from("additional_loan")
+        .select("additional_loan_amount")
+        .eq("user_id", payment.user_id)
+        .eq("period_key", paymentDetails.period_key)
+        .maybeSingle()
+
+      const newLoanAmount = additionalLoanData?.additional_loan_amount || 0
+
       // Find the PREVIOUS period's closing balance (which is the opening for this period being deleted)
-      // This is the source of truth - we want to restore to what it was before this payment
       let restoredBalance = 0
       const { data: previousPayment } = await supabase
         .from("loan_payments")
@@ -133,27 +158,94 @@ export function LoanHistoryTable({ payments, loans }: LoanHistoryTableProps) {
         .single()
 
       if (previousPayment) {
-        // When deleting a payment, simply restore to the previous period's closing balance
-        // This is the source of truth - no adjustments needed
-        restoredBalance = previousPayment.remaining_balance
+        // METHOD 1: Trust source of truth - use previous payment's closing balance
+        const method1_openingBalance = previousPayment.remaining_balance
+
+        // METHOD 2: Recalculate using formula: opening = THIS_MONTH_closing + EMI + principal - new_loan
+        const method2_openingBalance =
+          (paymentDetails.remaining_balance || 0) +
+          (paymentDetails.monthly_emi || 0) +
+          (paymentDetails.additional_principal || 0) -
+          newLoanAmount
+
+        console.log("[v0] REVERT: Balance Verification for period:", paymentDetails.period_key)
+        console.log("[v0] METHOD 1 (Direct - previous closing balance):", method1_openingBalance)
+        console.log("[v0] METHOD 2 (Recalculated from current closing):", method2_openingBalance)
+        console.log("[v0]   - Previous closing:", previousPayment.remaining_balance)
+        console.log("[v0]   - Current closing:", paymentDetails.remaining_balance)
+        console.log("[v0]   - Current EMI:", paymentDetails.monthly_emi)
+        console.log("[v0]   - Current principal:", paymentDetails.additional_principal)
+        console.log("[v0]   - Current new_loan:", newLoanAmount)
+
+        // Both methods must match when previous data exists - this is a data integrity check
+        if (Math.abs(method1_openingBalance - method2_openingBalance) > 0.01) {
+          console.warn("[v0] DATA INTEGRITY ISSUE: Balance methods mismatch!")
+          console.warn("[v0] Discrepancy:", Math.abs(method1_openingBalance - method2_openingBalance))
+          
+          // Show dialog for user to choose
+          setMismatchDialog({
+            isOpen: true,
+            periodKey: paymentDetails.period_key,
+            method1Value: method1_openingBalance,
+            method2Value: method2_openingBalance,
+            pendingPayment: payment,
+            selectedMethod: null,
+          })
+          setIsDeleting(false)
+          return
+        }
+
+        console.log("[v0] VERIFICATION PASSED: Both methods match ✓")
+        restoredBalance = method1_openingBalance
       } else {
-        // No prior payment - this is the first period for this loan
-        // Restore to the original loan amount (the opening balance when loan was created)
-        restoredBalance = loanData.loan_amount
+        // Edge case: No prior payment - this is the first period for this loan
+        // Use original_loan_amount as checkpoint for fresh start
+        const method1_checkpoint = loanData.original_loan_amount || loanData.loan_amount
+
+        // METHOD 2: Calculate what opening should be from current month data
+        const method2_calculated =
+          (paymentDetails.remaining_balance || 0) +
+          (paymentDetails.monthly_emi || 0) +
+          (paymentDetails.additional_principal || 0) -
+          newLoanAmount
+
+        console.log("[v0] REVERT: First Period (Edge Case) - Using original_loan_amount checkpoint")
+        console.log("[v0] CHECKPOINT (original_loan_amount):", method1_checkpoint)
+        console.log("[v0] CALCULATED (from current data):", method2_calculated)
+        console.log("[v0]   - Current closing:", paymentDetails.remaining_balance)
+        console.log("[v0]   - Current EMI:", paymentDetails.monthly_emi)
+        console.log("[v0]   - Current principal:", paymentDetails.additional_principal)
+        console.log("[v0]   - Current new_loan:", newLoanAmount)
+
+        // Verify checkpoint matches calculation as sanity check
+        if (Math.abs(method1_checkpoint - method2_calculated) > 0.01) {
+          console.warn("[v0] EDGE CASE: Checkpoint and calculation differ slightly")
+          console.warn("[v0] Difference:", Math.abs(method1_checkpoint - method2_calculated))
+        } else {
+          console.log("[v0] CHECKPOINT VERIFIED: Fresh start confirmed ✓")
+        }
+
+        // Use checkpoint for fresh start
+        restoredBalance = method1_checkpoint
       }
 
-      // Fetch and delete additional_loan if it exists for this period
-      const { data: additionalLoanData } = await supabase
-        .from("additional_loan")
-        .select("id")
-        .eq("user_id", payment.user_id)
-        .eq("period_key", paymentDetails.period_key)
-        .maybeSingle()
-
-      // Delete the payment record
+      // Delete the payment record first
       const { error: deletePaymentError } = await supabase.from("loan_payments").delete().eq("id", payment.id)
 
       if (deletePaymentError) throw deletePaymentError
+
+      console.log("[v0] Payment deleted successfully. Restored balance:", restoredBalance)
+
+      // Delete associated additional_loan if it exists
+      if (additionalLoanData) {
+        const { error: deleteAdditionalLoanError } = await supabase
+          .from("additional_loan")
+          .delete()
+          .eq("user_id", payment.user_id)
+          .eq("period_key", paymentDetails.period_key)
+
+        if (deleteAdditionalLoanError) throw deleteAdditionalLoanError
+      }
 
       // Delete associated additional_loan if it exists
       if (additionalLoanData) {
@@ -176,6 +268,55 @@ export function LoanHistoryTable({ payments, loans }: LoanHistoryTableProps) {
         // Don't throw - penalty deletion is not critical
       }
 
+      // Now recalculate all subsequent payments to ensure data integrity
+      const { data: subsequentPayments } = await supabase
+        .from("loan_payments")
+        .select("*")
+        .eq("loan_id", payment.loan_id)
+        .gt("period_key", paymentDetails.period_key)
+        .order("period_year", { ascending: true })
+        .order("period_month", { ascending: true })
+
+      if (subsequentPayments && subsequentPayments.length > 0) {
+        console.log("[v0] Recalculating", subsequentPayments.length, "subsequent payments...")
+        let currentOpeningBalance = restoredBalance
+
+        for (const subsequentPayment of subsequentPayments) {
+          // Calculate the corrected closing balance
+          const correctedClosingBalance = Math.max(
+            0,
+            currentOpeningBalance - (subsequentPayment.monthly_emi || 0) - (subsequentPayment.additional_principal || 0),
+          )
+
+          console.log(
+            "[v0] Recalc period",
+            subsequentPayment.period_key,
+            "- Opening:",
+            currentOpeningBalance,
+            "EMI:",
+            subsequentPayment.monthly_emi,
+            "Principal:",
+            subsequentPayment.additional_principal,
+            "Closing:",
+            correctedClosingBalance,
+          )
+
+          // Update the subsequent payment with corrected closing balance
+          const { error: updateError } = await supabase
+            .from("loan_payments")
+            .update({
+              remaining_balance: correctedClosingBalance,
+            })
+            .eq("id", subsequentPayment.id)
+
+          if (updateError) throw updateError
+
+          // Next payment's opening becomes this payment's closing
+          currentOpeningBalance = correctedClosingBalance
+        }
+        console.log("[v0] All subsequent payments recalculated successfully")
+      }
+
       // Restore loans.loan_amount to what it was before this payment was made
       const shouldBeActive = restoredBalance > 0
 
@@ -190,7 +331,7 @@ export function LoanHistoryTable({ payments, loans }: LoanHistoryTableProps) {
       if (updateLoanError) throw updateLoanError
 
       toast.success("Payment deleted successfully", {
-        description: "The payment has been removed and the loan balance has been restored.",
+        description: "The payment has been removed and all subsequent months have been recalculated.",
       })
 
       window.location.reload()
@@ -202,6 +343,116 @@ export function LoanHistoryTable({ payments, loans }: LoanHistoryTableProps) {
     } finally {
       setIsDeleting(false)
       setDeletePaymentId(null)
+    }
+  }
+
+  const continueDeletePaymentWithMethod = async (payment: LoanPayment, selectedMethod: 1 | 2) => {
+    const supabase = createClient()
+
+    try {
+      // Re-fetch necessary data
+      const { data: paymentDetails } = await supabase
+        .from("loan_payments")
+        .select("additional_principal, monthly_emi, period_key, period_year, period_month, remaining_balance")
+        .eq("id", payment.id)
+        .single()
+
+      if (!paymentDetails) throw new Error("Payment details not found")
+
+      const { data: additionalLoanData } = await supabase
+        .from("additional_loan")
+        .select("additional_loan_amount")
+        .eq("user_id", payment.user_id)
+        .eq("period_key", paymentDetails.period_key)
+        .maybeSingle()
+
+      const newLoanAmount = additionalLoanData?.additional_loan_amount || 0
+
+      // Get previous payment
+      const { data: previousPayment } = await supabase
+        .from("loan_payments")
+        .select("remaining_balance")
+        .eq("user_id", payment.user_id)
+        .lt("period_key", paymentDetails.period_key)
+        .order("period_year", { ascending: false })
+        .order("period_month", { ascending: false })
+        .limit(1)
+        .single()
+
+      let restoredBalance = 0
+
+      if (selectedMethod === 1) {
+        restoredBalance = previousPayment?.remaining_balance || 0
+        console.log("[v0] User selected METHOD 1: Using previous closing balance:", restoredBalance)
+      } else {
+        restoredBalance =
+          (paymentDetails.remaining_balance || 0) +
+          (paymentDetails.monthly_emi || 0) +
+          (paymentDetails.additional_principal || 0) -
+          newLoanAmount
+        console.log("[v0] User selected METHOD 2: Using calculated opening balance:", restoredBalance)
+      }
+
+      // Now perform the deletion with the selected balance
+      const { error: deletePaymentError } = await supabase.from("loan_payments").delete().eq("id", payment.id)
+      if (deletePaymentError) throw deletePaymentError
+
+      if (additionalLoanData) {
+        const { error: deleteAdditionalLoanError } = await supabase
+          .from("additional_loan")
+          .delete()
+          .eq("user_id", payment.user_id)
+          .eq("period_key", paymentDetails.period_key)
+        if (deleteAdditionalLoanError) throw deleteAdditionalLoanError
+      }
+
+      const { error: deletePenaltyError } = await supabase.from("penalties").delete().eq("loan_payment_id", payment.id)
+      if (deletePenaltyError) console.warn("[v0] Warning: Failed to delete penalties:", deletePenaltyError)
+
+      // Recalculate subsequent payments
+      const { data: subsequentPayments } = await supabase
+        .from("loan_payments")
+        .select("*")
+        .eq("loan_id", payment.loan_id)
+        .gt("period_key", paymentDetails.period_key)
+        .order("period_year", { ascending: true })
+        .order("period_month", { ascending: true })
+
+      if (subsequentPayments && subsequentPayments.length > 0) {
+        let currentOpeningBalance = restoredBalance
+        for (const subsequentPayment of subsequentPayments) {
+          const newOpeningBalance = currentOpeningBalance
+          const newClosingBalance = newOpeningBalance - (subsequentPayment.monthly_emi || 0) - (subsequentPayment.additional_principal || 0) + newLoanAmount
+
+          const { error: updateError } = await supabase
+            .from("loan_payments")
+            .update({ remaining_balance: newClosingBalance })
+            .eq("id", subsequentPayment.id)
+
+          if (updateError) throw updateError
+          currentOpeningBalance = newClosingBalance
+        }
+      }
+
+      // Update loan status
+      const { error: updateLoanError } = await supabase
+        .from("loans")
+        .update({ loan_amount: restoredBalance })
+        .eq("id", payment.loan_id)
+
+      if (updateLoanError) throw updateLoanError
+
+      toast.success("Payment deleted successfully", {
+        description: `Used ${selectedMethod === 1 ? "METHOD 1 (Previous Closing)" : "METHOD 2 (Calculated Opening)"} - All subsequent months recalculated.`,
+      })
+
+      window.location.reload()
+    } catch (error) {
+      console.error("[v0] Error completing deletion:", error)
+      toast.error("Failed to complete deletion", {
+        description: error instanceof Error ? error.message : "An unexpected error occurred",
+      })
+      setIsDeleting(false)
     }
   }
 
@@ -234,9 +485,8 @@ export function LoanHistoryTable({ payments, loans }: LoanHistoryTableProps) {
                       </CardTitle>
                     </div>
                     <div className="text-sm text-muted-foreground flex flex-col md:flex-row md:items-center gap-1 md:gap-4">
-                      <span>Loan: {formatCurrency(loan.amount || 0)}</span>
+                      <span>Loan: {formatCurrency(loan.loan_amount || 0)}</span>
                       <span>Rate: {loan.interest_rate || 0}%</span>
-                      <span>Duration: {actualDuration || 0}m</span>
                       <Badge variant={loan.status === "active" ? "default" : "secondary"} className="w-fit">
                         {loan.status}
                       </Badge>
@@ -382,6 +632,26 @@ export function LoanHistoryTable({ payments, loans }: LoanHistoryTableProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <VerificationMismatchDialog
+        isOpen={mismatchDialog.isOpen}
+        periodKey={mismatchDialog.periodKey}
+        method1Label="Previous Closing"
+        method1Value={mismatchDialog.method1Value}
+        method2Label="Calculated Opening"
+        method2Value={mismatchDialog.method2Value}
+        onSelectMethod={async (method) => {
+          if (!mismatchDialog.pendingPayment) return
+
+          // Continue deletion with selected method
+          await continueDeletePaymentWithMethod(mismatchDialog.pendingPayment, method)
+          setMismatchDialog((prev) => ({ ...prev, isOpen: false }))
+        }}
+        onCancel={() => {
+          setMismatchDialog((prev) => ({ ...prev, isOpen: false }))
+          setIsDeleting(false)
+        }}
+      />
     </>
   )
 }

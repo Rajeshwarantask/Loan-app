@@ -31,6 +31,7 @@ interface RecordPaymentUnifiedDialogProps {
     remaining_balance?: number
     loan_amount: number
     monthly_emi?: number
+    status?: string
     profiles: {
       full_name: string
       member_id?: string
@@ -59,7 +60,7 @@ export function RecordPaymentUnifiedDialog({
   const [hasPaymentThisMonth, setHasPaymentThisMonth] = useState(false)
   const [checkingPayment, setCheckingPayment] = useState(false)
   const [monthlySubscription, setMonthlySubscription] = useState("2100")
-  const [principalRemaining, setPrincipalRemaining] = useState(loan.remaining_balance ?? loan.loan_amount)
+  const [principalRemaining, setPrincipalRemaining] = useState(() => Math.max(0, loan?.loan_amount || 0))
   const [penaltyPayment, setPenaltyPayment] = useState("0")
   const [outstandingPenalty, setOutstandingPenalty] = useState(0)
   const [missedLastMonthPayment, setMissedLastMonthPayment] = useState(false)
@@ -74,14 +75,45 @@ export function RecordPaymentUnifiedDialog({
 
   const defaultEmi = 5000
 
-  const [emiPayment, setEmiPayment] = useState(defaultEmi.toString())
+  // State to track current loan status (refreshes when needed)
+  const [currentLoanStatus, setCurrentLoanStatus] = useState(loan.status || "active")
+  const isSubscriptionOnly = currentLoanStatus === "subscription_only"
+
+  // Refresh loan status when dialog opens or loan id changes
+  useEffect(() => {
+    const refreshLoanStatus = async () => {
+      try {
+        const supabase = createClient()
+        const { data, error } = await supabase
+          .from("loans")
+          .select("status")
+          .eq("id", loan.id)
+          .single()
+
+        if (!error && data) {
+          setCurrentLoanStatus(data.status)
+          console.log("[v0] Refreshed loan status:", data.status)
+        }
+      } catch (err) {
+        console.error("[v0] Error refreshing loan status:", err)
+      }
+    }
+
+    refreshLoanStatus()
+  }, [loan.id])
+  
+  // For subscription_only users converting to active, allow new loan input
+  // For active users, EMI is always based on loan details
+  const [emiPayment, setEmiPayment] = useState(isSubscriptionOnly ? "0" : defaultEmi.toString())
   const [additionalPrincipalPayment, setAdditionalPrincipalPayment] = useState("0")
   const [newLoanAmount, setNewLoanAmount] = useState("0")
+  const [newLoanRate, setNewLoanRate] = useState("1.5")
   const [interestPayment, setInterestPayment] = useState("")
 
   const emi = Number(emiPayment) || 0
   const additionalPrincipal = Number(additionalPrincipalPayment) || 0
   const newLoan = Number(newLoanAmount) || 0
+  const interest_rate = loan?.interest_rate ?? 1.5
 
   // EMI and Additional principal will reduce NEXT month's balance, not this month
   // Current month's balance remains unchanged for display purposes
@@ -89,7 +121,7 @@ export function RecordPaymentUnifiedDialog({
   // Interest should be calculated on current month's opening balance (before any payments)
   // EMI, additional principal, and new loan will affect NEXT month's balance and interest
   const balanceForCurrentInterest = principalRemaining
-  const currentMonthInterest = Math.max(0, Math.round((balanceForCurrentInterest * loan.interest_rate) / 100))
+  const currentMonthInterest = Math.max(0, Math.round((balanceForCurrentInterest * interest_rate) / 100))
   const totalInterestDue = accumulatedInterest + currentMonthInterest
   const totalSubscriptionDue = accumulatedSubscription + 2100
 
@@ -115,16 +147,6 @@ export function RecordPaymentUnifiedDialog({
   }
 
   const router = useRouter()
-
-  useEffect(() => {
-    if (open) {
-      checkExistingPayment()
-      fetchMostRecentBalance()
-      fetchOutstandingPenalty()
-      checkLastMonthPayment()
-      fetchAccumulatedUnpaidAmounts()
-    }
-  }, [open, selectedMonth, selectedYear])
 
   const fetchAccumulatedUnpaidAmounts = async () => {
     try {
@@ -271,19 +293,8 @@ export function RecordPaymentUnifiedDialog({
         return
       }
 
-      const { data, error: penaltyError } = await supabase.rpc("get_user_outstanding_penalties", {
-        p_user_id: loan.user_id,
-      })
-
-      if (penaltyError) {
-        console.error("[v0] Error getting current penalty:", penaltyError)
-        return
-      }
-
-      const newOutstandingPenalty = (Number(data) || 0) + 100
-      console.log("[v0] New outstanding penalty after missed payment:", newOutstandingPenalty)
-
-      setOutstandingPenalty(newOutstandingPenalty)
+      // Penalties are stored in loan_payments table - no separate RPC needed
+      console.log("[v0] Penalty from current payment record will be stored in loan_payments.penalty column")
     } catch (err) {
       console.error("[v0] Error in addAutomaticPenalty:", err)
     }
@@ -291,16 +302,21 @@ export function RecordPaymentUnifiedDialog({
 
   const fetchOutstandingPenalty = async () => {
     try {
+      // Penalties are stored in loan_payments table, not a separate penalties table
+      // Outstanding penalty = sum of penalty column from recent unpaid periods
       const supabase = createClient()
-      const { data, error } = await supabase.rpc("get_user_outstanding_penalties", {
-        p_user_id: loan.user_id,
-      })
+      const { data, error } = await supabase
+        .from("loan_payments")
+        .select("penalty")
+        .eq("user_id", loan.user_id)
+        .eq("status", "unpaid")
 
       if (error) {
         console.error("[v0] Error fetching outstanding penalty:", error)
         setOutstandingPenalty(0)
       } else {
-        setOutstandingPenalty(Number(data) || 0)
+        const totalPenalty = (data || []).reduce((sum, p) => sum + (Number(p.penalty) || 0), 0)
+        setOutstandingPenalty(totalPenalty)
       }
     } catch (err) {
       console.error("[v0] Error in fetchOutstandingPenalty:", err)
@@ -312,65 +328,35 @@ export function RecordPaymentUnifiedDialog({
     try {
       const supabase = createClient()
 
-      // Find the most recent paid period STRICTLY BEFORE the selected period
-      // Walk backwards — handles gaps where e.g. Feb has no data, so use Jan
-      const { data: paymentData, error: paymentError } = await supabase
-        .from("loan_payments")
-        .select("remaining_balance, period_key, period_month, period_year")
-        .eq("user_id", loan.user_id)
-        .lt("period_key", selectedPeriodKey) // strictly before the selected period
-        .order("period_year", { ascending: false })
-        .order("period_month", { ascending: false })
-        .limit(1)
+      // Opening Balance = Previous period's closing balance ONLY
+      // NO additional adjustments needed - they're already reflected in the closing balance
 
-      if (paymentError) {
-        console.error("[v0] Error fetching payment balance:", paymentError)
-        setPrincipalRemaining(loan.loan_amount)
-        return
+      // Calculate previous month's period_key
+      let previousMonth = selectedMonth - 1
+      let previousYear = selectedYear
+      if (previousMonth < 1) {
+        previousMonth = 12
+        previousYear = selectedYear - 1
       }
+      const previousPeriodKey = `${previousYear}-${String(previousMonth).padStart(2, "0")}`
 
-      if (paymentData && paymentData.length > 0) {
-        const lastPayment = paymentData[0]
+      // Get previous period's closing balance - use this directly as opening balance
+      const { data: previousPayment } = await supabase
+        .from("loan_payments")
+        .select("remaining_balance, period_key, period_year, period_month")
+        .eq("user_id", loan.user_id)
+        .eq("period_key", previousPeriodKey)
+        .limit(1)
+        .single()
 
-        // Opening Balance for this month = 
-        // Last period's remaining_balance (closing balance)
-        // + additional_loan taken in last period
-        // - additional_principal paid in last period
-        let openingBalance = lastPayment.remaining_balance
+      if (previousPayment) {
+        const openingBalance = Math.max(0, previousPayment.remaining_balance)
+        console.log("[v0] Period:", selectedPeriodKey, "Opening Balance:", openingBalance, "(directly from previous closing balance)")
 
-        console.log("[v0] Selected period:", selectedPeriodKey, "Found prior period:", lastPayment.period_key, "Closing balance:", lastPayment.remaining_balance)
-
-        // Add any top-up loans taken in the last period
-        const { data: additionalLoans } = await supabase
-          .from("additional_loan")
-          .select("additional_loan_amount")
-          .eq("user_id", loan.user_id)
-          .eq("period_key", lastPayment.period_key)
-
-        const additionalLoanSum = (additionalLoans || []).reduce(
-          (sum, al) => sum + (Number(al.additional_loan_amount) || 0), 0
-        )
-
-        // Subtract additional principal paid in the last period
-        const { data: additionalPrincipalRows } = await supabase
-          .from("loan_payments")
-          .select("additional_principal")
-          .eq("user_id", loan.user_id)
-          .eq("period_key", lastPayment.period_key)
-
-        const additionalPrincipalSum = (additionalPrincipalRows || []).reduce(
-          (sum, lp) => sum + (Number(lp.additional_principal) || 0), 0
-        )
-
-        openingBalance = openingBalance + additionalLoanSum - additionalPrincipalSum
-
-        console.log("[v0] Opening balance calc: closing", lastPayment.remaining_balance, "+ additional_loan", additionalLoanSum, "- additional_principal", additionalPrincipalSum, "= final", openingBalance)
-
-        setPrincipalRemaining(Math.max(0, openingBalance))
+        setPrincipalRemaining(openingBalance)
       } else {
-        // No payment history — brand new member, first month
-        // loans.loan_amount is the current outstanding (set at creation, kept in sync)
-        console.log("[v0] No prior payment found for selected period", selectedPeriodKey, "Using loan_amount:", loan.loan_amount)
+        // No prior payment found, use loan amount (first month or brand new member)
+        console.log("[v0] No prior payment found for period", previousPeriodKey, "Using loan_amount:", loan.loan_amount)
         setPrincipalRemaining(loan.loan_amount)
       }
     } catch (err) {
@@ -405,6 +391,17 @@ export function RecordPaymentUnifiedDialog({
     }
   }
 
+  // Initialize data when dialog opens
+  useEffect(() => {
+    if (open) {
+      checkExistingPayment()
+      fetchMostRecentBalance()
+      fetchOutstandingPenalty()
+      checkLastMonthPayment()
+      fetchAccumulatedUnpaidAmounts()
+    }
+  }, [open, selectedMonth, selectedYear])
+
   const handleSubmit = async (isPaid: boolean) => {
     if (!isPaid) {
       setOpen(false)
@@ -418,9 +415,24 @@ export function RecordPaymentUnifiedDialog({
     const subscription = Number(monthlySubscription) || 2100 + accumulatedSubscription
     const penalty = Number(penaltyPayment) || 0
 
-    if (emi <= -1) {
-      setError("Monthly EMI is mandatory and must be greater than -1")
-      return
+    // For subscription_only users, special handling for first month conversion
+    if (isSubscriptionOnly) {
+      if (emi > 0 && newLoan === 0) {
+        setError("Subscription-only users cannot pay EMI without adding a new loan")
+        return
+      }
+      // When adding new loan (subscription_only → active conversion):
+      // First month: Can have 0 EMI (only subscription charged)
+      // This matches the "reflect next month" pattern - EMI starts collecting from month 2
+      if (newLoan > 0 && emi < 0) {
+        setError("EMI cannot be negative")
+        return
+      }
+    } else {
+      if (emi <= -1) {
+        setError("Monthly EMI is mandatory and must be greater than -1")
+        return
+      }
     }
 
     if (interest < 0 || additionalPrincipal < 0 || newLoan < 0 || emi < 0 || subscription < 0 || penalty < 0) {
@@ -455,9 +467,9 @@ export function RecordPaymentUnifiedDialog({
 
       const currentPrincipal = principalRemaining
 
-      // Closing balance = Opening Balance − EMI only
-      // additionalPrincipal and newLoan affect NEXT month's opening, not this month's closing
-      const newRemainingBalance = Math.max(0, currentPrincipal - emi)
+      // Closing balance = Opening Balance − EMI − additional_principal
+      // Both EMI and additional_principal reduce this month's closing balance
+      const newRemainingBalance = Math.max(0, currentPrincipal - emi - additionalPrincipal)
 
       // Use selected period (supports backfill for missed months)
       const paymentMonth = selectedMonth
@@ -466,10 +478,37 @@ export function RecordPaymentUnifiedDialog({
 
       const totalAmount = interest + emi + additionalPrincipal + subscription
 
+      // If subscription_only user is converting to active, update loan status first
+      if (isSubscriptionOnly && newLoan > 0) {
+        // Total loan amount = current opening balance + new loan taken
+        const totalLoanAmount = principalRemaining + newLoan
+        const finalLoanRate = Number(newLoanAmount) > 0 ? (Number(newLoanAmount) / (principalRemaining + Number(newLoanAmount))) * (loan?.interest_rate ?? 1.5) : (loan?.interest_rate ?? 1.5)
+
+        const { error: loanUpdateError } = await supabase
+          .from("loans")
+          .update({
+            loan_amount: totalLoanAmount,
+            original_loan_amount: totalLoanAmount,
+            interest_rate: finalLoanRate,
+            status: "active",
+          })
+          .eq("id", loan.id)
+
+        if (loanUpdateError) {
+          console.error("[v0] Loan conversion error:", loanUpdateError)
+          throw new Error("Failed to convert subscription to active loan")
+        }
+
+        // Update local state to reflect the conversion
+        setCurrentLoanStatus("active")
+        console.log("[v0] Successfully converted subscription_only to active loan. Opening balance:", principalRemaining, "+ new loan:", newLoan, "= total:", totalLoanAmount)
+      }
+
       const { error: paymentError } = await supabase.from("loan_payments").insert({
         loan_id: loan.id,
         user_id: loan.user_id,
         member_id: loan.member_id || loan.profiles?.member_id,
+        full_name: loan.profiles?.full_name || "Unknown",
         payment_date: new Date().toISOString(),
         interest_paid: interest,
         amount: totalAmount,
@@ -489,33 +528,9 @@ export function RecordPaymentUnifiedDialog({
         throw new Error(paymentError.message || "Failed to record payment")
       }
 
+      // Penalty is now stored directly in loan_payments.penalty column - no separate penalties table needed
       if (penalty > 0) {
-        const { error: penaltyError } = await supabase.from("penalties").insert({
-          user_id: loan.user_id,
-          member_id: loan.member_id || loan.profiles?.member_id,
-          full_name: loan.profiles?.full_name || "Unknown",
-          penalty_type: "payment",
-          amount: penalty,
-          reason: "Penalty payment via monthly payment dialog",
-          period_key: periodKey,
-          period_month: paymentMonth,
-          period_year: paymentYear,
-          recorded_by: user.id,
-        })
-
-        if (penaltyError) {
-          console.error("[v0] Penalty payment error:", penaltyError)
-        } else {
-          // Send penalty notification via server action
-          console.log("[v0] Sending penalty notification via server action")
-          triggerNotification({
-            type: "penalty",
-            userId: loan.user_id,
-            title: "Penalty Applied",
-            body: `A penalty of ${formatCurrency(penalty)} has been applied to your account.`,
-            data: { type: "penalty_applied", amount: penalty },
-          }).catch((err) => console.error("[v0] Failed to send penalty notification:", err))
-        }
+        console.log("[v0] Penalty", penalty, "recorded in loan_payments for period", periodKey)
       }
 
       const { data: loanData, error: loanError } = await supabase
@@ -528,14 +543,19 @@ export function RecordPaymentUnifiedDialog({
         console.error("[v0] Loan fetch error:", loanError)
       }
 
-      const shouldComplete = newRemainingBalance <= 0
+      // For subscription_only users, they never reach "paid" status - it's ongoing
+      // For active loans, mark as paid only if balance is fully cleared
+      const shouldComplete = newRemainingBalance <= 0 && !isSubscriptionOnly
       const newStatus = shouldComplete
         ? "paid"
-        : loanData?.status === "approved"
-          ? "active"
-          : loanData?.status || "active"
+        : isSubscriptionOnly
+          ? "subscription_only"
+          : loanData?.status === "approved"
+            ? "active"
+            : loanData?.status || "active"
 
       // Keep loans.loan_amount in sync with loan_payments.remaining_balance (both = current outstanding)
+      // IMPORTANT: original_loan_amount should NEVER be updated - it remains static as the checkpoint
       const { error: updateError } = await supabase
         .from("loans")
         .update({
@@ -742,9 +762,13 @@ export function RecordPaymentUnifiedDialog({
 
       <DialogContent className="max-w-[95vw] md:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="text-sm md:text-base">Record Monthly Payment</DialogTitle>
+          <DialogTitle className="text-sm md:text-base">
+            {isSubscriptionOnly ? "Record Subscription Payment" : "Record Monthly Payment"}
+          </DialogTitle>
           <DialogDescription className="text-xs md:text-sm">
-            Record payment for {loan.profiles?.full_name}
+            {isSubscriptionOnly 
+              ? `Record subscription payment for ${loan.profiles?.full_name} (or convert to active loan)`
+              : `Record payment for ${loan.profiles?.full_name}`}
           </DialogDescription>
         </DialogHeader>
 
@@ -853,14 +877,14 @@ export function RecordPaymentUnifiedDialog({
                 value={additionalPrincipalPayment}
                 onChange={(e) => handleAdditionalPrincipalChange(e.target.value)}
                 className="h-7 md:h-9 text-xs md:text-sm"
-                disabled={hasPaymentThisMonth}
+                disabled={hasPaymentThisMonth || isSubscriptionOnly}
               />
               <p className="text-[9px] md:text-xs text-muted-foreground">Extra payment beyond EMI</p>
             </div>
 
             <div className="space-y-1">
               <Label htmlFor="newLoan" className="text-[10px] md:text-xs">
-                New Loan Taken
+                {isSubscriptionOnly ? "New Loan (To Convert)" : "New Loan Taken"}
               </Label>
               <Input
                 id="newLoan"

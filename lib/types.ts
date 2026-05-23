@@ -78,7 +78,6 @@ export interface LoanRequest {
   id: string
   user_id: string
   amount: number
-  duration_months: number
   purpose: string
   status: "pending" | "approved" | "rejected"
   reviewed_by: string | null

@@ -10,49 +10,21 @@ export interface LoanCalculation {
 export interface LoanSummary {
   loanAmount: number
   interestRate: number
-  durationMonths: number
   totalInterest: number
-  totalAmount: number
   monthlyPayment: number
-  breakdown: LoanCalculation[]
 }
 
-export function calculateLoan(amount: number, interestRate: number, durationMonths: number): LoanSummary {
+export function calculateLoan(amount: number, interestRate: number): LoanSummary {
   const principal = amount
   const monthlyInterestRate = interestRate / 100
-
-  // Simple interest calculation for community loan
-  const totalInterest = principal * monthlyInterestRate * durationMonths
-  const totalAmount = principal + totalInterest
-  const monthlyPayment = totalAmount / durationMonths
-
-  const breakdown: LoanCalculation[] = []
-  let remainingBalance = totalAmount
-
-  for (let month = 1; month <= durationMonths; month++) {
-    const interestForMonth = (remainingBalance / durationMonths) * (interestRate / 100)
-    const principalForMonth = monthlyPayment - interestForMonth
-
-    remainingBalance -= monthlyPayment
-
-    breakdown.push({
-      month,
-      monthLabel: `Month ${month}`,
-      principalPaid: principalForMonth,
-      interestPaid: interestForMonth,
-      totalPayment: monthlyPayment,
-      remainingBalance: Math.max(0, remainingBalance),
-    })
-  }
+  const monthlyInterest = principal * monthlyInterestRate
+  const monthlyPayment = principal + monthlyInterest
 
   return {
     loanAmount: amount,
     interestRate,
-    durationMonths,
-    totalInterest,
-    totalAmount,
+    totalInterest: monthlyInterest,
     monthlyPayment,
-    breakdown,
   }
 }
 
