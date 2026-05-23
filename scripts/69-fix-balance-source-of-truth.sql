@@ -72,30 +72,18 @@ BEGIN
       ),
 
       -- total_loan_taken = Opening Balance for this period
-      -- = latest loan_payments.remaining_balance (prev closing)
-      --   + additional_loan in that same prev period
-      --   - additional_principal in that same prev period
-      -- If no payment history at all, fall back to loans.loan_amount (first-time member)
+      -- = latest loan_payments.remaining_balance (prev closing) ONLY
+      -- Additional loans and principal adjustments are already reflected in the previous period's closing balance
+      -- They should NOT be added again here (that would be double-counting)
       COALESCE(
         (
-          SELECT
-            lp_last.remaining_balance
-            + COALESCE((
-                SELECT SUM(al.additional_loan_amount)
-                FROM additional_loan al
-                WHERE al.user_id = u.id AND al.period_key = lp_last.period_key
-              ), 0)
-            - COALESCE((
-                SELECT SUM(lp2.additional_principal)
-                FROM loan_payments lp2
-                WHERE lp2.user_id = u.id AND lp2.period_key = lp_last.period_key
-              ), 0)
+          SELECT lp_last.remaining_balance
           FROM loan_payments lp_last
           WHERE lp_last.user_id = u.id
           ORDER BY lp_last.period_year DESC, lp_last.period_month DESC
           LIMIT 1
         ),
-        (SELECT COALESCE(SUM(l.loan_amount), 0) FROM loans l WHERE l.user_id = u.id AND l.status = 'active')
+        (SELECT COALESCE(SUM(l.loan_amount), 0) FROM loans l WHERE l.user_id = u.id AND l.status IN ('active', 'subscription_only'))
       ) AS total_loan_taken,
 
       -- Additional Principal paid IN p_period_key
@@ -114,37 +102,20 @@ BEGIN
         0
       ),
 
-      -- total_loan_outstanding = Closing Balance for p_period_key
-      -- = latest loan_payments.remaining_balance for p_period_key (if payment already made this month)
-      --   OR Opening Balance (if not yet paid this month)
-      -- Opening Balance = prev closing + prev period additional_loan - prev period additional_principal
+      -- total_loan_outstanding = Closing Balance for current period
+      -- If payment made this month: use loan_payments.remaining_balance for this period
+      -- If no payment yet: use Opening Balance (no change in principal this month)
       COALESCE(
-        -- If already paid this month, use this month's closing balance from loan_payments
         (SELECT lp_curr.remaining_balance
          FROM loan_payments lp_curr
          WHERE lp_curr.user_id = u.id AND lp_curr.period_key = p_period_key
          ORDER BY lp_curr.created_at DESC LIMIT 1),
-        -- Otherwise compute opening balance (no payment yet this month)
-        (
-          SELECT
-            lp_last.remaining_balance
-            + COALESCE((
-                SELECT SUM(al.additional_loan_amount)
-                FROM additional_loan al
-                WHERE al.user_id = u.id AND al.period_key = lp_last.period_key
-              ), 0)
-            - COALESCE((
-                SELECT SUM(lp2.additional_principal)
-                FROM loan_payments lp2
-                WHERE lp2.user_id = u.id AND lp2.period_key = lp_last.period_key
-              ), 0)
-          FROM loan_payments lp_last
-          WHERE lp_last.user_id = u.id
-          ORDER BY lp_last.period_year DESC, lp_last.period_month DESC
-          LIMIT 1
-        ),
-        -- First-time member: use loan_amount
-        (SELECT COALESCE(SUM(l.loan_amount), 0) FROM loans l WHERE l.user_id = u.id AND l.status = 'active')
+        (SELECT lp_last.remaining_balance
+         FROM loan_payments lp_last
+         WHERE lp_last.user_id = u.id
+         ORDER BY lp_last.period_year DESC, lp_last.period_month DESC
+         LIMIT 1),
+        (SELECT COALESCE(SUM(l.loan_amount), 0) FROM loans l WHERE l.user_id = u.id AND l.status IN ('active', 'subscription_only'))
       ),
 
       -- Monthly Interest Income
@@ -254,40 +225,20 @@ BEGIN
 
       -- Available Loan Amount = 400000 - total_loan_outstanding
       400000 - COALESCE(
-        (SELECT lp_curr.remaining_balance
-         FROM loan_payments lp_curr
-         WHERE lp_curr.user_id = u.id AND lp_curr.period_key = p_period_key
-         ORDER BY lp_curr.created_at DESC LIMIT 1),
-        (
-          SELECT
-            lp_last.remaining_balance
-            + COALESCE((
-                SELECT SUM(al.additional_loan_amount)
-                FROM additional_loan al
-                WHERE al.user_id = u.id AND al.period_key = lp_last.period_key
-              ), 0)
-            - COALESCE((
-                SELECT SUM(lp2.additional_principal)
-                FROM loan_payments lp2
-                WHERE lp2.user_id = u.id AND lp2.period_key = lp_last.period_key
-              ), 0)
-          FROM loan_payments lp_last
-          WHERE lp_last.user_id = u.id
-          ORDER BY lp_last.period_year DESC, lp_last.period_month DESC
-          LIMIT 1
-        ),
-        (SELECT COALESCE(SUM(l.loan_amount), 0) FROM loans l WHERE l.user_id = u.id AND l.status = 'active')
+        (SELECT lp_curr.remaining_balance FROM loan_payments lp_curr WHERE lp_curr.user_id = u.id AND lp_curr.period_key = p_period_key ORDER BY lp_curr.created_at DESC LIMIT 1),
+        (SELECT lp_last.remaining_balance FROM loan_payments lp_last WHERE lp_last.user_id = u.id ORDER BY lp_last.period_year DESC, lp_last.period_month DESC LIMIT 1),
+        (SELECT COALESCE(SUM(l.loan_amount), 0) FROM loans l WHERE l.user_id = u.id AND l.status IN ('active', 'subscription_only'))
       )
 
     FROM profiles u
     WHERE (
       u.role IN ('member', 'user')
       OR (u.role = 'admin' AND EXISTS (
-        SELECT 1 FROM loans l WHERE l.user_id = u.id AND l.status = 'active'
+        SELECT 1 FROM loans l WHERE l.user_id = u.id AND l.status IN ('active', 'subscription_only')
       ))
     )
     AND (
-      EXISTS (SELECT 1 FROM loans l WHERE l.user_id = u.id AND l.status = 'active')
+      EXISTS (SELECT 1 FROM loans l WHERE l.user_id = u.id AND l.status IN ('active', 'subscription_only'))
       OR EXISTS (SELECT 1 FROM loan_payments lp WHERE lp.user_id = u.id AND lp.period_key = prev_period_key)
       OR EXISTS (
         SELECT 1 FROM monthly_loan_records mlr

@@ -54,11 +54,11 @@ Cron job endpoint that:
 ## Configuration
 
 ### Environment Variables Required
-```
+\`\`\`
 NEXT_PUBLIC_VAPID_PUBLIC_KEY=<your-vapid-public-key>
 NEXT_PUBLIC_BASE_URL=http://localhost:3000  # or your production URL
 CRON_SECRET=<optional-secret-for-cron-security>
-```
+\`\`\`
 
 ### Cron Job Setup
 To schedule the payment reminder job, add to Vercel dashboard or your cron service:
@@ -97,11 +97,11 @@ Users can enable/disable notifications in Settings:
    - System will send payment reminders 2 days before month end
 
 ### API Testing
-```bash
+\`\`\`bash
 # Test payment reminder cron
 curl -X POST http://localhost:3000/api/cron/send-payment-reminders \
   -H "x-cron-secret: your-secret"
-```
+\`\`\`
 
 ## Security Notes
 

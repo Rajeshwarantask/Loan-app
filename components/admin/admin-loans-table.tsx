@@ -189,8 +189,8 @@ export function AdminLoansTable({ loans, backfillMonth, backfillYear }: AdminLoa
           <TableRow>
             <TableHead className="px-2 md:px-4">ID</TableHead>
             <TableHead className="px-2 md:px-4">User</TableHead>
-            <TableHead className="px-2 md:px-4">Total Loan</TableHead>
-            <TableHead className="px-2 md:px-4">Principal</TableHead>
+            <TableHead className="px-2 md:px-4">Opening</TableHead>
+            <TableHead className="px-2 md:px-4">Closing</TableHead>
             <TableHead className="px-2 md:px-4 hidden md:table-cell">Rate</TableHead>
             <TableHead className="px-2 md:px-4">Status</TableHead>
             <TableHead className="px-2 md:px-4 hidden md:table-cell">Record</TableHead>
@@ -221,6 +221,8 @@ export function AdminLoansTable({ loans, backfillMonth, backfillYear }: AdminLoa
                   <div className="flex items-center justify-center" title={loan.status}>
                     {loan.status === "active" ? (
                       <Clock className="h-6 w-6 text-blue-500" strokeWidth={1.5} />
+                    ) : loan.status === "subscription_only" ? (
+                      <Clock className="h-6 w-6 text-red-500" strokeWidth={1.5} />
                     ) : loan.status === "completed" || loan.status === "closed" ? (
                       <CheckCircle2 className="h-6 w-6 text-green-500" strokeWidth={1.5} />
                     ) : (

@@ -12,7 +12,6 @@ import { AddLoanDialog } from "./add-loan-dialog"
 import { UserLoanSummaryTable } from "./user-loan-summary-table"
 import { AdditionalLoanHistory } from "./additional-loan-history"
 import { QuickInitializeButton } from "./quick-initialize-button"
-import { UsersWithoutLoansTable } from "./users-without-loans-table"
 import { BackfillPeriodFilter } from "./backfill-period-filter"
 import { createClient } from "@/lib/supabase/client"
 
@@ -130,7 +129,7 @@ export function LoanManagementClient({ loans, payments, users, additionalLoans }
   }, [loans, searchTerm, statusFilter, selectedUser])
 
   const activeLoans = useMemo(() => {
-    const active = filteredLoans.filter((loan) => loan.status === "active")
+    const active = filteredLoans.filter((loan) => loan.status === "active" || loan.status === "subscription_only")
     return active.sort((a, b) => {
       const memberA = a.profiles?.member_id || ""
       const memberB = b.profiles?.member_id || ""
@@ -238,50 +237,6 @@ export function LoanManagementClient({ loans, payments, users, additionalLoans }
     })
   }, [users])
 
-  const usersWithoutLoans = useMemo(() => {
-    // Get current period key
-    const now = new Date()
-    const currentPeriodKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
-
-    // Users with active loans
-    const userIdsWithActiveLoans = new Set(loans.filter((loan) => loan.status === "active").map((loan) => loan.user_id))
-
-    // Users who made loan payments (EMI/principal) in current period
-    // Use the period_key from payments table and check for actual loan payment amounts
-    const userIdsWithLoanPaymentsThisMonth = new Set(
-      payments
-        .filter((payment) => {
-          // Check if payment belongs to current period using existing period fields
-          const paymentPeriodKey = payment.month_year || ""
-
-          // If payment has EMI or principal, it's a loan payment (not subscription-only)
-          const hasLoanPayment =
-            (payment.principal_paid && payment.principal_paid > 0) ||
-            (payment.interest_paid && payment.interest_paid > 0)
-
-          return paymentPeriodKey === currentPeriodKey && hasLoanPayment
-        })
-        .map((payment) => payment.user_id),
-    )
-
-    return users
-      .filter((user) => {
-        // Exclude users with active loans
-        if (userIdsWithActiveLoans.has(user.id)) return false
-
-        // Exclude users who made loan payments this month (they already paid subscription with their loan payment)
-        if (userIdsWithLoanPaymentsThisMonth.has(user.id)) return false
-
-        return true
-      })
-      .sort((a, b) => {
-        const memberA = a.member_id || ""
-        const memberB = b.member_id || ""
-        const numA = Number.parseInt(memberA.replace(/\D/g, ""), 10) || 0
-        const numB = Number.parseInt(memberB.replace(/\D/g, ""), 10) || 0
-        return numA - numB
-      })
-  }, [users, loans, payments])
 
   return (
     <div className="container max-w-7xl py-2 md:py-6 px-2 md:px-6 space-y-2 md:space-y-6">
@@ -369,14 +324,6 @@ export function LoanManagementClient({ loans, payments, users, additionalLoans }
               />
             </CardContent>
           </Card>
-
-          {usersWithoutLoans.length > 0 && (
-            <Card>
-              <CardContent className="px-2 md:px-6 py-4">
-                <UsersWithoutLoansTable users={usersWithoutLoans} />
-              </CardContent>
-            </Card>
-          )}
         </TabsContent>
 
         <TabsContent value="completed-loans" className="space-y-2 md:space-y-4">
