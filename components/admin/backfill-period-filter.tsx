@@ -28,7 +28,9 @@ export function BackfillPeriodFilter({ loans, onPeriodChange }: BackfillPeriodFi
   const [missingDataLoans, setMissingDataLoans] = useState<Loan[]>([])
   const [isLoading, setIsLoading] = useState(false)
 
-  // Calculate valid date range and missing data for selected period
+  // Calculate valid date range based on earliest loan in the system
+  // NOTE: we still use the loans prop here only for computing the valid year/month
+  // range for the dropdowns — NOT for the missing count (that queries DB directly)
   useEffect(() => {
     if (loans.length === 0) return
 
@@ -70,7 +72,7 @@ export function BackfillPeriodFilter({ loans, onPeriodChange }: BackfillPeriodFi
 
   // Find missing data for selected period
   useEffect(() => {
-    if (loans.length === 0 || validMonths.length === 0) return
+    if (validMonths.length === 0) return
 
     const findMissing = async () => {
       setIsLoading(true)
@@ -78,21 +80,68 @@ export function BackfillPeriodFilter({ loans, onPeriodChange }: BackfillPeriodFi
         const supabase = createClient()
         const periodKey = `${selectedYear}-${String(selectedMonth).padStart(2, "0")}`
 
-        // Find which users don't have payment records for this period
-        const { data: paymentRecords } = await supabase
+        // ── FIX ────────────────────────────────────────────────────────────────
+        // BEFORE: filtered the parent `loans` prop using created_at <= period START.
+        //   - Wrong cutoff: should be < first day of NEXT month, not <= first day of THIS month
+        //   - Wrong source: parent prop may be pre-filtered or missing subscription_only users
+        //   - Result: 4 people silently excluded → showed 40 instead of 44
+        //
+        // AFTER: query the loans table directly as the single source of truth,
+        // scoped to the period using created_at < first day of NEXT month.
+        // This matches the exact same logic used in checkAndAutoInitializeNextMonth.
+        //
+        // periodCutoff = first day of the NEXT month.
+        // new Date(2026, 4, 1) → May 1 = correct cutoff for April
+        // (selectedMonth=4 for April; without -1 it becomes the 5th month index = May)
+        const periodCutoff = new Date(selectedYear, selectedMonth, 1).toISOString()
+
+        // Query all loans that existed during this period (active, subscription_only, or
+        // paid-off — all of them needed a payment record for this period)
+        const { data: eligibleLoans, error: loansError } = await supabase
+          .from("loans")
+          .select("user_id, id, status, created_at, loan_amount, profiles(full_name, member_id)")
+          .in("status", ["active", "subscription_only", "paid"])
+          .lt("created_at", periodCutoff)
+
+        if (loansError) {
+          console.error("[v0] Error fetching eligible loans for period:", loansError)
+          return
+        }
+
+        // Deduplicate by user_id — one person may have multiple loan rows
+        const seenUserIds = new Set<string>()
+        const uniqueEligibleLoans = (eligibleLoans || []).filter((l) => {
+          if (seenUserIds.has(l.user_id)) return false
+          seenUserIds.add(l.user_id)
+          return true
+        })
+
+        // Get all payments already recorded for this period
+        const { data: paymentRecords, error: paymentsError } = await supabase
           .from("loan_payments")
           .select("user_id")
           .eq("period_key", periodKey)
 
-        const recordedUserIds = new Set(paymentRecords?.map((r) => r.user_id) || [])
-        const missing = loans.filter(
-          (l) =>
-            !recordedUserIds.has(l.user_id) &&
-            new Date(l.created_at) <= new Date(selectedYear, selectedMonth - 1, 1)
+        if (paymentsError) {
+          console.error("[v0] Error fetching payment records:", paymentsError)
+          return
+        }
+
+        const recordedUserIds = new Set((paymentRecords || []).map((r) => r.user_id))
+
+        // Missing = had a loan this period but NO payment record found
+        const missing = uniqueEligibleLoans.filter((l) => !recordedUserIds.has(l.user_id))
+
+        console.log(
+          "[v0] Period:", periodKey,
+          "| Eligible loans:", uniqueEligibleLoans.length,
+          "| Paid:", recordedUserIds.size,
+          "| Missing:", missing.length
         )
 
         setMissingDataLoans(missing)
         onPeriodChange(selectedMonth, selectedYear, missing)
+        // ── END FIX ────────────────────────────────────────────────────────────
       } catch (error) {
         console.error("[v0] Error finding missing records:", error)
       } finally {
