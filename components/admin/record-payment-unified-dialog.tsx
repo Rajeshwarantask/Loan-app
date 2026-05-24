@@ -595,7 +595,9 @@ export function RecordPaymentUnifiedDialog({
       
       // For active loans, mark as paid only if balance is fully cleared
       const shouldComplete =
-        newRemainingBalance <= 0 && !hasConvertedToActive
+        !isSubscriptionOnly &&
+        newRemainingBalance <= 0 &&
+        !hasConvertedToActive
       
       const newStatus = shouldComplete
         ? "paid"
@@ -825,9 +827,9 @@ export function RecordPaymentUnifiedDialog({
             {isSubscriptionOnly ? "Record Subscription Payment" : "Record Monthly Payment"}
           </DialogTitle>
           <DialogDescription className="text-xs md:text-sm">
-            {isSubscriptionOnly 
-              ? `Record subscription payment for ${loan.profiles?.full_name}`
-              : `Record payment for ${loan.profiles?.full_name}`}
+            {isSubscriptionOnly
+              ? `Record subscription payment for ${loan.profiles?.full_name} [ ${monthName} ${selectedYear} ]`
+              : `Record payment for ${loan.profiles?.full_name} [ ${monthName} ${selectedYear} ]`}
           </DialogDescription>
         </DialogHeader>
 
