@@ -622,7 +622,7 @@ export function RecordPaymentUnifiedDialog({
       // Send payment confirmation notification via server action
       console.log("[v0] ========== PAYMENT NOTIFICATION ==========")
       console.log("[v0] Loan belongs to user ID:", loan.user_id)
-      console.log("[v0] Loan user name:", loan.profiles?.name || "Unknown")
+      console.log("[v0] Loan user name:", loan.profiles?.full_name || "Unknown")
       console.log("[v0] Sending notification to user ID:", loan.user_id)
       console.log("[v0] Notification details:", {
         userId: loan.user_id,
