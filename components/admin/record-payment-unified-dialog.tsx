@@ -551,14 +551,22 @@ export function RecordPaymentUnifiedDialog({
 
       // For subscription_only users, they never reach "paid" status - it's ongoing
       // For active loans, mark as paid only if balance is fully cleared
-      const shouldComplete = newRemainingBalance <= 0 && !isSubscriptionOnly
+      // Detect if subscription_only user is converting to active
+      const hasConvertedToActive = isSubscriptionOnly && newLoan > 0
+      
+      // For active loans, mark as paid only if balance is fully cleared
+      const shouldComplete =
+        newRemainingBalance <= 0 && !hasConvertedToActive
+      
       const newStatus = shouldComplete
         ? "paid"
-        : isSubscriptionOnly
-          ? "subscription_only"
-          : loanData?.status === "approved"
-            ? "active"
-            : loanData?.status || "active"
+        : hasConvertedToActive
+          ? "active"
+          : isSubscriptionOnly
+            ? "subscription_only"
+            : loanData?.status === "approved"
+              ? "active"
+              : loanData?.status || "active"
 
       // Keep loans.loan_amount in sync with loan_payments.remaining_balance (both = current outstanding)
       // IMPORTANT: original_loan_amount should NEVER be updated - it remains static as the checkpoint
@@ -614,7 +622,7 @@ export function RecordPaymentUnifiedDialog({
       // Send payment confirmation notification via server action
       console.log("[v0] ========== PAYMENT NOTIFICATION ==========")
       console.log("[v0] Loan belongs to user ID:", loan.user_id)
-      console.log("[v0] Loan user name:", loan.profiles?.name || "Unknown")
+      console.log("[v0] Loan user name:", loan.profiles?.full_name || "Unknown")
       console.log("[v0] Sending notification to user ID:", loan.user_id)
       console.log("[v0] Notification details:", {
         userId: loan.user_id,
@@ -649,40 +657,40 @@ export function RecordPaymentUnifiedDialog({
 
       console.log("[v0] Checking if all payments are recorded for period:", periodKey)
 
-      const { count: currentActiveLoans, error: activeLoansError } = await supabase
-        .from("loans")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "active")
-
-      if (activeLoansError) {
-        console.error("[v0] Error counting active loans:", activeLoansError)
-        return
-      }
-
       const { data: allUsersData, error: allUsersError } = await supabase
         .from("profiles")
         .select("id")
         .eq("role", "member")
-
+      
       if (allUsersError) {
-        console.error("[v0] Error counting all users:", allUsersError)
+        console.error("[v0] Error fetching members:", allUsersError)
         return
       }
-
-      const { data: usersWithLoansData, error: usersWithLoansError } = await supabase
+      
+      const { data: activeLoanUsersData, error: activeLoanUsersError } = await supabase
         .from("loans")
         .select("user_id")
         .eq("status", "active")
-
-      if (usersWithLoansError) {
-        console.error("[v0] Error counting users with loans:", usersWithLoansError)
+      
+      if (activeLoanUsersError) {
+        console.error("[v0] Error fetching active loan users:", activeLoanUsersError)
         return
       }
-
-      const usersWithActiveLoans = new Set(usersWithLoansData?.map((l: any) => l.user_id) || [])
-      const subscriptionOnlyUsers = allUsersData?.filter((user: any) => !usersWithActiveLoans.has(user.id)).length || 0
-
-      const totalUsersNeedingPayment = (currentActiveLoans || 0) + subscriptionOnlyUsers
+      
+      // UNIQUE users having active loans
+      const activeLoanUsers = new Set(
+        activeLoanUsersData?.map((l: any) => l.user_id) || []
+      )
+      
+      // Users without active loans = subscription_only users
+      const subscriptionOnlyUsers =
+        allUsersData?.filter(
+          (user: any) => !activeLoanUsers.has(user.id)
+        ).length || 0
+      
+      // TOTAL UNIQUE USERS needing payment
+      const totalUsersNeedingPayment =
+        activeLoanUsers.size + subscriptionOnlyUsers
 
       const { data: paymentsThisPeriod, error: paymentsError } = await supabase
         .from("loan_payments")
@@ -703,8 +711,8 @@ export function RecordPaymentUnifiedDialog({
       const totalPaymentsRecorded = uniqueUsersPaid.size
 
       console.log(
-        "[v0] Active loans:",
-        currentActiveLoans,
+        "[v0] Active loan users:",
+        activeLoanUsers.size,
         "Subscription-only users:",
         subscriptionOnlyUsers,
         "Total users needing payment:",
@@ -773,7 +781,7 @@ export function RecordPaymentUnifiedDialog({
           </DialogTitle>
           <DialogDescription className="text-xs md:text-sm">
             {isSubscriptionOnly 
-              ? `Record subscription payment for ${loan.profiles?.full_name} (or convert to active loan)`
+              ? `Record subscription payment for ${loan.profiles?.full_name}`
               : `Record payment for ${loan.profiles?.full_name}`}
           </DialogDescription>
         </DialogHeader>
