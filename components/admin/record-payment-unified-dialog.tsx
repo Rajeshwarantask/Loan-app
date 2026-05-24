@@ -30,6 +30,7 @@ interface RecordPaymentUnifiedDialogProps {
     interest_rate: number
     remaining_balance?: number
     loan_amount: number
+    original_loan_amount?: number
     monthly_emi?: number
     status?: string
     profiles: {
@@ -60,7 +61,9 @@ export function RecordPaymentUnifiedDialog({
   const [hasPaymentThisMonth, setHasPaymentThisMonth] = useState(false)
   const [checkingPayment, setCheckingPayment] = useState(false)
   const [monthlySubscription, setMonthlySubscription] = useState("2100")
-  const [principalRemaining, setPrincipalRemaining] = useState(() => Math.max(0, loan?.loan_amount || 0))
+  const [principalRemaining, setPrincipalRemaining] = useState(() => 
+    Math.max(0, loan?.original_loan_amount || loan?.loan_amount || 0)
+  )
   const [penaltyPayment, setPenaltyPayment] = useState("0")
   const [outstandingPenalty, setOutstandingPenalty] = useState(0)
   const [missedLastMonthPayment, setMissedLastMonthPayment] = useState(false)
@@ -352,16 +355,18 @@ export function RecordPaymentUnifiedDialog({
       if (previousPayment) {
         const openingBalance = Math.max(0, previousPayment.remaining_balance)
         console.log("[v0] Period:", selectedPeriodKey, "Opening Balance:", openingBalance, "(directly from previous closing balance)")
-
         setPrincipalRemaining(openingBalance)
       } else {
-        // No prior payment found, use loan amount (first month or brand new member)
-        console.log("[v0] No prior payment found for period", previousPeriodKey, "Using loan_amount:", loan.loan_amount)
-        setPrincipalRemaining(loan.loan_amount)
+        // No prior payment found - use original_loan_amount if available, otherwise fallback to loan_amount
+        const fallbackBalance = loan.original_loan_amount || loan.loan_amount || 0
+        console.log("[v0] No prior payment found for period", previousPeriodKey, "Using fallback balance:", fallbackBalance)
+        setPrincipalRemaining(fallbackBalance)
       }
     } catch (err) {
       console.error("[v0] Error in fetchMostRecentBalance:", err)
-      setPrincipalRemaining(loan.loan_amount)
+      // Fallback: use original_loan_amount if available, otherwise loan_amount
+      const fallbackBalance = loan.original_loan_amount || loan.loan_amount || 0
+      setPrincipalRemaining(fallbackBalance)
     }
   }
 
@@ -467,9 +472,10 @@ export function RecordPaymentUnifiedDialog({
 
       const currentPrincipal = principalRemaining
 
-      // Closing balance = Opening Balance − EMI − additional_principal
-      // Both EMI and additional_principal reduce this month's closing balance
-      const newRemainingBalance = Math.max(0, currentPrincipal - emi - additionalPrincipal)
+      // Closing balance = Opening Balance + New Loan − EMI − additional_principal
+      // For subscription_only users converting to active: includes new loan in calculation
+      // For regular users: new loan typically 0, so reduces by EMI and additional principal
+      const newRemainingBalance = Math.max(0, currentPrincipal + newLoan - emi - additionalPrincipal)
 
       // Use selected period (supports backfill for missed months)
       const paymentMonth = selectedMonth
