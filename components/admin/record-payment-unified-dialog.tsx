@@ -556,7 +556,9 @@ export function RecordPaymentUnifiedDialog({
       
       // For active loans, mark as paid only if balance is fully cleared
       const shouldComplete =
-        newRemainingBalance <= 0 && !hasConvertedToActive
+        newRemainingBalance <= 0 &&
+        !isSubscriptionOnly &&
+        !hasConvertedToActive
       
       const newStatus = shouldComplete
         ? "paid"
