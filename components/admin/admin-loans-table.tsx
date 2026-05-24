@@ -15,6 +15,7 @@ import { DeleteLoanDialog } from "./delete-loan-dialog"
 interface Loan {
   id: string
   loan_amount: number
+  original_loan_amount: number
   interest_rate: number
   status: string
   created_at: string
@@ -122,47 +123,22 @@ export function AdminLoansTable({ loans, backfillMonth, backfillYear }: AdminLoa
         }
         const previousPeriodKey = `${previousYear}-${String(previousMonth).padStart(2, "0")}`
 
-        // Opening balance = Previous period's closing balance + previous period's additional loans - previous period's additional principal
+        // Opening balance = Previous period's closing balance
         const { data: previousPayment } = await supabase
           .from("loan_payments")
           .select("remaining_balance, period_key, period_year, period_month")
-          .eq("user_id", loan.user_id)
+          .eq("loan_id", loan.id)
           .eq("period_key", previousPeriodKey)
           .limit(1)
           .single()
 
         if (previousPayment) {
-          let balanceWithAdditionalLoans = previousPayment.remaining_balance
-          
-          // Fetch additional loans taken in the previous period
-          // (these should be added to this month's opening balance)
-          const { data: additionalLoans } = await supabase
-            .from("additional_loan")
-            .select("additional_loan_amount")
-            .eq("user_id", loan.user_id)
-            .eq("period_key", previousPeriodKey)
-
-          if (additionalLoans && additionalLoans.length > 0) {
-            const additionalLoanAmount = additionalLoans.reduce((sum, al) => sum + (Number(al.additional_loan_amount) || 0), 0)
-            balanceWithAdditionalLoans += additionalLoanAmount
-          }
-
-          // Subtract additional principal paid in the previous period
-          const { data: additionalPrincipalRows } = await supabase
-            .from("loan_payments")
-            .select("additional_principal")
-            .eq("user_id", loan.user_id)
-            .eq("period_key", previousPeriodKey)
-
-          if (additionalPrincipalRows && additionalPrincipalRows.length > 0) {
-            const additionalPrincipalSum = additionalPrincipalRows.reduce((sum, lp) => sum + (Number(lp.additional_principal) || 0), 0)
-            balanceWithAdditionalLoans -= additionalPrincipalSum
-          }
-
-          openingBalances[loan.id] = Math.max(0, balanceWithAdditionalLoans)
+          // Opening balance for current period = Previous period's closing (remaining_balance)
+          // Previous period's closing already includes the effect of new loans and additional principal paid
+          openingBalances[loan.id] = previousPayment.remaining_balance || 0
         } else {
-          // No prior payment found, use loan amount
-          openingBalances[loan.id] = loan.loan_amount
+          // No prior payment found, this is the first month - use original_loan_amount as opening
+          openingBalances[loan.id] = loan.original_loan_amount
         }
 
         return { loanId: loan.id, status: statusMap[loan.id] }
@@ -200,13 +176,14 @@ export function AdminLoansTable({ loans, backfillMonth, backfillYear }: AdminLoa
         <TableBody>
           {loans.map((loan) => {
             const recordStatus = recordStatusMap[loan.id]
-            // monthOpeningBalances = opening balance for the selected backfill period
-            // monthClosingBalances = closing balance for the selected backfill period
-            // latestClosingBalances = most recent closing balance (fallback for display)
-            const openingBalance = monthOpeningBalances[loan.id] ?? loan.loan_amount
-            const closingBalance = monthClosingBalances[loan.id] ?? latestClosingBalances[loan.id] ?? loan.loan_amount
-            const totalLoan = openingBalance  // Opening balance for selected period
-            const principalRemaining = closingBalance  // Closing balance for selected period
+            // For display:
+            // - Opening: opening balance for selected period (or original_loan_amount if first month with no prior payment)
+            // - Closing: closing balance for selected period (or latest closing balance, or original_loan_amount if no payments)
+            const openingBalance = monthOpeningBalances[loan.id] ?? loan.original_loan_amount
+            // For closing: prioritize monthClosingBalances (current period payment), then latestClosingBalances (most recent), then original_loan_amount
+            const closingBalance = monthClosingBalances[loan.id] !== null && monthClosingBalances[loan.id] !== undefined 
+              ? monthClosingBalances[loan.id]
+              : (latestClosingBalances[loan.id] ?? loan.original_loan_amount)
 
             return (
               <TableRow key={loan.id}>
@@ -214,8 +191,8 @@ export function AdminLoansTable({ loans, backfillMonth, backfillYear }: AdminLoa
                 <TableCell className="px-2 md:px-4">
                   <div className="font-medium">{loan.profiles.full_name}</div>
                 </TableCell>
-                <TableCell className="font-semibold px-2 md:px-4">{formatCurrency(totalLoan)}</TableCell>
-                <TableCell className="font-semibold px-2 md:px-4">{formatCurrency(principalRemaining)}</TableCell>
+                <TableCell className="font-semibold px-2 md:px-4">{formatCurrency(openingBalance)}</TableCell>
+                <TableCell className="font-semibold px-2 md:px-4">{formatCurrency(closingBalance)}</TableCell>
                 <TableCell className="px-2 md:px-4 hidden md:table-cell">{loan.interest_rate}%</TableCell>
                 <TableCell className="px-2 md:px-4">
                   <div className="flex items-center justify-center" title={loan.status}>
@@ -280,31 +257,31 @@ export function AdminLoansTable({ loans, backfillMonth, backfillYear }: AdminLoa
                               <div>
                                 <div className="text-sm font-medium text-muted-foreground">Opening Balance</div>
                                 <div className="text-lg font-bold">
-                                  {formatCurrency(monthOpeningBalances[selectedLoan.id] ?? selectedLoan.loan_amount)}
+                                  {formatCurrency(monthOpeningBalances[selectedLoan.id] ?? selectedLoan.original_loan_amount)}
                                 </div>
                               </div>
                               <div>
                                 <div className="text-sm font-medium text-muted-foreground">Closing Balance</div>
                                 <div className="text-lg font-bold">
-                                  {formatCurrency(monthClosingBalances[selectedLoan.id] ?? latestClosingBalances[selectedLoan.id] ?? selectedLoan.loan_amount)}
+                                  {formatCurrency(monthClosingBalances[selectedLoan.id] ?? latestClosingBalances[selectedLoan.id] ?? selectedLoan.original_loan_amount)}
                                 </div>
                               </div>
                               <div>
                                 <div className="text-sm font-medium text-muted-foreground">Interest Rate</div>
                                 <div className="text-lg font-bold">{selectedLoan.interest_rate}%</div>
                               </div>
-                              <div>
-                                <div className="text-sm font-medium text-muted-foreground">Monthly Interest</div>
-                                <div className="font-semibold">
-                                  {formatCurrency(
-                                    Math.round(
-                                      ((monthClosingBalances[selectedLoan.id] ?? selectedLoan.loan_amount) *
-                                        selectedLoan.interest_rate) /
-                                        100,
-                                    ),
-                                  )}
-                                </div>
-                              </div>
+                                  <div>
+                                    <div className="text-sm font-medium text-muted-foreground">Monthly Interest</div>
+                                    <div className="font-semibold">
+                                      {formatCurrency(
+                                        Math.round(
+                                          ((monthClosingBalances[selectedLoan.id] ?? selectedLoan.original_loan_amount) *
+                                            selectedLoan.interest_rate) /
+                                            100,
+                                        ),
+                                      )}
+                                    </div>
+                                  </div>
                               {selectedLoan.monthly_emi && selectedLoan.monthly_emi > 0 ? (
                                 <>
                                   <div>
