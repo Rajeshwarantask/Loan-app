@@ -11,13 +11,13 @@
 - Result: `Closing Balance`
 
 **Example:**
-```
+\`\`\`
 Opening Balance = 50,000
 EMI Paid = 5,000
 Additional Principal = 2,000
 New Loan = 10,000
 Closing = 50,000 - 5,000 - 2,000 + 10,000 = 53,000
-```
+\`\`\`
 
 ### Revert Formula (Inverse)
 **Formula:** `Opening = Closing + EMI + Additional Principal - New Loan Amount`
@@ -30,13 +30,13 @@ Starting from Closing formula: `C = O - E - A + N`
 - Therefore: `O = C + E + A - N` ✓
 
 **Example (reversing above):**
-```
+\`\`\`
 Closing Balance = 53,000
 EMI Paid = 5,000
 Additional Principal = 2,000
 New Loan = 10,000
 Opening = 53,000 + 5,000 + 2,000 - 10,000 = 50,000 ✓
-```
+\`\`\`
 
 ### Implementation Status
 ✓ Formulas are mathematically consistent

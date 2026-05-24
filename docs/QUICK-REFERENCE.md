@@ -3,15 +3,15 @@
 ## Quick Start for Developers
 
 ### Check if a Balance is Valid
-```typescript
+\`\`\`typescript
 import { balanceRecoveryService } from '@/lib/utils/balance-recovery'
 
 const balance = await balanceRecoveryService.getOpeningBalance(userId, '2024-06')
 console.log('Opening balance:', balance)
-```
+\`\`\`
 
 ### Record a Payment with New Architecture
-```typescript
+\`\`\`typescript
 import { memberStatusService } from '@/lib/utils/member-status'
 import { 
   reconstructClosingBalance,
@@ -55,26 +55,26 @@ await supabase.from('loan_payments').insert({
   penalty: penalty
   // ... other fields
 })
-```
+\`\`\`
 
 ### Revert a Period
-```typescript
+\`\`\`typescript
 import { balanceRecoveryService } from '@/lib/utils/balance-recovery'
 
 const result = await balanceRecoveryService.revertPeriod(userId, '2024-06', adminId)
 if (result.success) {
   console.log(`Reverted, new balance: ${result.restored_balance}`)
 }
-```
+\`\`\`
 
 ### Validate All Balances (Admin)
-```typescript
+\`\`\`typescript
 import { dataIntegrityService } from '@/lib/utils/data-integrity'
 
 const issues = await dataIntegrityService.validateAllBalances(userId)
 const badPeriods = issues.filter(i => !i.is_valid)
 console.log(`Found ${badPeriods.length} inconsistencies`)
-```
+\`\`\`
 
 ## Formula Reference
 
@@ -84,22 +84,22 @@ console.log(`Found ${badPeriods.length} inconsistencies`)
 3. Reconstruction from history
 
 ### Closing Balance (Formula)
-```
+\`\`\`
 Closing = Opening - EMI - Additional Principal + New Loan Amount
 
 Also useful for revert operations:
 Opening = Closing + EMI + Additional Principal - New Loan Amount
-```
+\`\`\`
 
 ### Interest Accumulation
-```
+\`\`\`
 Total Interest = Previous Unpaid + (Opening Balance × Rate / 100)
-```
+\`\`\`
 
 ### Subscription Accumulation
-```
+\`\`\`
 Total Subscription = Previous Unpaid + 2100 (monthly)
-```
+\`\`\`
 
 ## Utility Methods at a Glance
 
@@ -145,7 +145,7 @@ Total Subscription = Previous Unpaid + 2100 (monthly)
 ## Common Scenarios
 
 ### Scenario: New Loan for Subscription-Only Member
-```typescript
+\`\`\`typescript
 // 1. Get opening balance
 const opening = await balanceRecoveryService.getOpeningBalance(userId, '2024-07')
 
@@ -159,18 +159,18 @@ const closing = reconstructClosingBalance(opening, 5000, 0, 50000)
 
 // 4. Record payment
 // ... record in loan_payments with closing balance
-```
+\`\`\`
 
 ### Scenario: Fix Missing Original Amounts (Admin)
-```typescript
+\`\`\`typescript
 const integrity = new DataIntegrityService()
 const issues = await integrity.checkOriginalAmountPopulation()
 console.log(`${issues.unpopulatedCount} loans need fixing`)
 await integrity.fixMissingOriginalAmounts()
-```
+\`\`\`
 
 ### Scenario: Monthly Validation (Admin)
-```typescript
+\`\`\`typescript
 const integrity = new DataIntegrityService()
 const issues = await integrity.validateAllBalances()
 if (issues.some(i => !i.is_valid)) {
@@ -179,10 +179,10 @@ if (issues.some(i => !i.is_valid)) {
 } else {
   console.log('✅ All balances consistent')
 }
-```
+\`\`\`
 
 ### Scenario: Revert Mistake (Admin)
-```typescript
+\`\`\`typescript
 // User X payment for June 2024 was recorded incorrectly
 const result = await balanceRecoveryService.revertPeriod(
   userXId,
@@ -191,10 +191,10 @@ const result = await balanceRecoveryService.revertPeriod(
 )
 // System restores balance from May 2024 or original_loan_amount
 // User can now re-record correct payment for June
-```
+\`\`\`
 
 ## Error Handling Pattern
-```typescript
+\`\`\`typescript
 try {
   const balance = await balanceRecoveryService.getOpeningBalance(userId, periodKey)
 } catch (err) {
@@ -202,19 +202,19 @@ try {
   // Fallback to stored balance or notify user
   return storedBalance
 }
-```
+\`\`\`
 
 ## Admin Panel Access
-```
+\`\`\`
 Path: /admin/balance-management
 - Validate Tab: Check system integrity
 - Revert Tab: Revert payment periods
 - Repair Tab: Fix data issues
 - Sync Tab: Fix member status issues
-```
+\`\`\`
 
 ## Database Function Calls (Direct SQL)
-```sql
+\`\`\`sql
 -- Get opening balance
 SELECT * FROM get_opening_balance('user-id', '2024-06');
 
@@ -229,10 +229,10 @@ SELECT * FROM validate_balance_consistency('user-id');
 
 -- Sync member status
 SELECT * FROM sync_member_status_on_loan_conversion('user-id');
-```
+\`\`\`
 
 ## Imports Summary
-```typescript
+\`\`\`typescript
 // Calculator utilities
 import { 
   reconstructClosingBalance,
@@ -253,7 +253,7 @@ import { dataIntegrityService } from '@/lib/utils/data-integrity'
 
 // Month initialization
 import { initializeMonthAction } from '@/lib/server-actions/initialize-month'
-```
+\`\`\`
 
 ## Documentation Links
 - **Full Guide:** `/docs/BALANCE-ARCHITECTURE.md`
