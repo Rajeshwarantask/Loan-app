@@ -75,7 +75,12 @@ export function RecordPaymentUnifiedDialog({
   const selectedYear = backfillYear ?? currentRealYear
   const selectedPeriodKey = `${selectedYear}-${String(selectedMonth).padStart(2, "0")}`
   const isBackfill = selectedMonth !== currentRealMonth || selectedYear !== currentRealYear
-
+  const monthName = new Date(
+  selectedYear,
+  selectedMonth - 1
+).toLocaleString("default", {
+  month: "short",
+})
   const defaultEmi = 5000
 
   // State to track current loan status (refreshes when needed)
@@ -782,9 +787,9 @@ export function RecordPaymentUnifiedDialog({
             {isSubscriptionOnly ? "Record Subscription Payment" : "Record Monthly Payment"}
           </DialogTitle>
           <DialogDescription className="text-xs md:text-sm">
-            {isSubscriptionOnly 
-              ? `Record subscription payment for ${loan.profiles?.full_name}`
-              : `Record payment for ${loan.profiles?.full_name}`}
+            {isSubscriptionOnly
+              ? `Record subscription payment for ${loan.profiles?.full_name} for ${monthName} ${selectedYear}`
+              : `Record payment for ${loan.profiles?.full_name} for ${monthName} ${selectedYear}`}
           </DialogDescription>
         </DialogHeader>
 
