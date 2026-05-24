@@ -108,7 +108,7 @@ $$\text{Closing Balance} = \text{Opening} + \text{New Loans} - \text{EMI} - \tex
 
 ### With Existing Payment Recording
 The new architecture integrates seamlessly with the payment recording dialog:
-```typescript
+\`\`\`typescript
 // When recording a payment, use:
 const closing = reconstructClosingBalance(
   openingBalance,
@@ -119,55 +119,55 @@ const closing = reconstructClosingBalance(
 
 // Store in loan_payments
 remaining_balance: closing
-```
+\`\`\`
 
 ### With Monthly Initialization
 The `initialize_new_month` function now uses the architecture's priority-based opening balance:
-```typescript
+\`\`\`typescript
 // Opens from previous closing balance first
 // Falls back to original_loan_amount
 // Reconstructs if needed
-```
+\`\`\`
 
 ### With Member Management
 Automatic conversion on loan updates:
-```typescript
+\`\`\`typescript
 // When subscription_only member adds loan
 await memberStatusService.convertSubscriptionToActive(...)
 // Status automatically updates via trigger
-```
+\`\`\`
 
 ## Migration Checklist
 
 Before going live, execute in this order:
 
 1. **Apply Database Migration**
-   ```sql
+   \`\`\`sql
    -- Execute /scripts/74-implement-balance-architecture.sql
-   ```
+   \`\`\`
 
 2. **Populate Missing Data**
-   ```typescript
+   \`\`\`typescript
    const integrity = new DataIntegrityService()
    await integrity.fixMissingOriginalAmounts()
-   ```
+   \`\`\`
 
 3. **Validate System**
-   ```typescript
+   \`\`\`typescript
    const result = await integrity.validateAllBalances()
    // Check for inconsistencies
-   ```
+   \`\`\`
 
 4. **Fix Issues** (if any found)
-   ```typescript
+   \`\`\`typescript
    // Use admin panel or services to repair
-   ```
+   \`\`\`
 
 5. **Verify Member Status**
-   ```typescript
+   \`\`\`typescript
    const result = await integrity.verifyMemberStatusConsistency()
    // Should show all consistent
-   ```
+   \`\`\`
 
 6. **Enable in Production**
    - Deploy updated payment recording dialog
@@ -177,28 +177,28 @@ Before going live, execute in this order:
 ## Maintenance Procedures
 
 ### Weekly
-```typescript
+\`\`\`typescript
 // Check for new inconsistencies
 const result = await dataIntegrityService.validateAllBalances()
 if (!result.isEmpty) { notifyAdmins() }
-```
+\`\`\`
 
 ### Monthly
-```typescript
+\`\`\`typescript
 // Generate reconciliation reports
 for (const userId of activeUsers) {
   const report = await dataIntegrityService.generateReconciliationReport(userId)
   archive(report)
 }
-```
+\`\`\`
 
 ### Quarterly
-```typescript
+\`\`\`typescript
 // Full system audit
 const duplicates = await dataIntegrityService.findDuplicatePayments()
 const orphaned = await dataIntegrityService.checkOrphanedPayments()
 const status = await dataIntegrityService.verifyMemberStatusConsistency()
-```
+\`\`\`
 
 ## Files Modified/Created
 
@@ -224,16 +224,16 @@ If issues occur:
    - Disable admin panel
 
 2. **Restore from backup**
-   ```sql
+   \`\`\`sql
    -- If critical data corrupted
    ROLLBACK TRANSACTION;
-   ```
+   \`\`\`
 
 3. **Debug using services**
-   ```typescript
+   \`\`\`typescript
    // Use validation service to identify issues
    const issues = await dataIntegrityService.validateAllBalances()
-   ```
+   \`\`\`
 
 4. **Analyze and fix**
    - Identify root cause

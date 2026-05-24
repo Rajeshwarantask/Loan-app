@@ -12,7 +12,7 @@ This document describes the implementation of the complete loan balance architec
 - **Fallback Source:** Reconstruction formula when historical data is incomplete
 
 ### 2. Balance Formula
-```
+\`\`\`
 Closing Balance = Opening Balance - EMI - Additional Principal + New Loan Amount
 
 Where:
@@ -20,14 +20,14 @@ Where:
 - EMI = Monthly Equated Installment payments (reduces balance)
 - Additional Principal = Extra principal payments (reduces balance)
 - New Loan Amount = Sum of additional_loan_amount for the period (increases balance)
-```
+\`\`\`
 
 ### 3. Revert Formula
-```
+\`\`\`
 Opening Balance = Closing Balance + EMI + Additional Principal - New Loan Amount
 
 This is the inverse of the closing formula for reconstructing prior period balances.
-```
+\`\`\`
 
 ### 3. Member Status Synchronization
 - **Initial State:** `subscription_only` (members who pay only subscription, no active loan)
@@ -128,7 +128,7 @@ This is the inverse of the closing formula for reconstructing prior period balan
 
 ### Example 1: Recording a Payment
 
-```typescript
+\`\`\`typescript
 import { memberStatusService } from '@/lib/utils/member-status'
 import { balanceRecoveryService } from '@/lib/utils/balance-recovery'
 
@@ -160,11 +160,11 @@ await supabase.from('loan_payments').insert({
   // ... other fields
   remaining_balance: closing
 })
-```
+\`\`\`
 
 ### Example 2: Reverting a Period
 
-```typescript
+\`\`\`typescript
 import { balanceRecoveryService } from '@/lib/utils/balance-recovery'
 
 // Revert a specific period
@@ -178,11 +178,11 @@ if (result.success) {
   console.log(`Reverted ${result.deleted_count} records`)
   console.log(`Restored balance: ${result.restored_balance}`)
 }
-```
+\`\`\`
 
 ### Example 3: Validating Balances
 
-```typescript
+\`\`\`typescript
 import { dataIntegrityService } from '@/lib/utils/data-integrity'
 
 // Check all user's balances
@@ -192,11 +192,11 @@ const issues = await dataIntegrityService.validateAllBalances(userId)
 const inconsistent = issues.filter(i => !i.is_valid)
 
 console.log(`Found ${inconsistent.length} periods with balance mismatches`)
-```
+\`\`\`
 
 ### Example 4: Member Status Consistency
 
-```typescript
+\`\`\`typescript
 import { dataIntegrityService } from '@/lib/utils/data-integrity'
 
 // Check system-wide consistency
@@ -211,39 +211,39 @@ if (!result.isConsistent) {
     await memberStatusService.ensureStatusConsistency(issue.userId)
   }
 }
-```
+\`\`\`
 
 ## Data Migration Steps
 
 1. **Run Migration Script**
-   ```sql
+   \`\`\`sql
    -- Execute /scripts/74-implement-balance-architecture.sql
    -- This creates all functions, indexes, and triggers
-   ```
+   \`\`\`
 
 2. **Populate Missing Original Amounts**
-   ```typescript
+   \`\`\`typescript
    const integrity = new DataIntegrityService()
    await integrity.fixMissingOriginalAmounts()
-   ```
+   \`\`\`
 
 3. **Validate All Balances**
-   ```typescript
+   \`\`\`typescript
    const integrity = new DataIntegrityService()
    const issues = await integrity.validateAllBalances()
-   ```
+   \`\`\`
 
 4. **Fix Any Inconsistencies**
-   ```typescript
+   \`\`\`typescript
    // Review issues and decide on corrections
    // Use revert logic for problematic periods
-   ```
+   \`\`\`
 
 5. **Verify Member Status Consistency**
-   ```typescript
+   \`\`\`typescript
    const result = await integrity.verifyMemberStatusConsistency()
    // Should show isConsistent: true
-   ```
+   \`\`\`
 
 ## Key Design Decisions
 
@@ -265,44 +265,44 @@ if (!result.isConsistent) {
 ## Maintenance Tasks
 
 ### Regular Checks
-```typescript
+\`\`\`typescript
 // Weekly consistency check
 const integrity = new DataIntegrityService()
 const result = await integrity.verifyMemberStatusConsistency()
 if (!result.isConsistent) {
   // Alert admins
 }
-```
+\`\`\`
 
 ### Periodic Reconciliation
-```typescript
+\`\`\`typescript
 // Monthly reconciliation report
 for (const userId of activeUsers) {
   const report = await integrity.generateReconciliationReport(userId)
   // Archive for audit trail
 }
-```
+\`\`\`
 
 ### Annual Cleanup
-```typescript
+\`\`\`typescript
 // Check for duplicates and orphaned records
 const duplicates = await integrity.findDuplicatePayments()
 const orphaned = await integrity.checkOrphanedPayments()
 // Review and clean up
-```
+\`\`\`
 
 ## Error Handling
 
 All services throw errors with descriptive messages. Recommended pattern:
 
-```typescript
+\`\`\`typescript
 try {
   const balance = await balanceRecoveryService.getOpeningBalance(userId, periodKey)
 } catch (err) {
   console.error('Failed to get balance:', err.message)
   // Fallback logic or user notification
 }
-```
+\`\`\`
 
 ## Performance Considerations
 
