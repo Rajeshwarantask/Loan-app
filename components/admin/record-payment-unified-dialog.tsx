@@ -166,7 +166,7 @@ export function RecordPaymentUnifiedDialog({
       // Get all payment records for this user, ordered by period
       const { data: payments, error } = await supabase
         .from("loan_payments")
-        .select("period_year, period_month, period_key, interest_paid, monthly_subscription, remaining_balance")
+        .select("period_year, period_month, period_key, interest_paid, monthly_emi, monthly_subscription, remaining_balance")
         .eq("user_id", loan.user_id)
         .order("period_year", { ascending: true })
         .order("period_month", { ascending: true })
@@ -195,7 +195,9 @@ export function RecordPaymentUnifiedDialog({
         const expectedSubscription = 2100
 
         // Check if interest was not paid
-        if (payment.interest_paid === 0 && payment.remaining_balance > 0 ) {
+        const hadActiveLoan = payment.monthly_emi !== null
+          
+        if ( hadActiveLoan && (payment.interest_paid === 0 || payment.interest_paid === null)) {
           totalUnpaidInterest += expectedInterest
           console.log(`[v0] Unpaid interest found for ${payment.period_key}: ${expectedInterest}`)
         }
