@@ -195,7 +195,7 @@ export function RecordPaymentUnifiedDialog({
         const expectedSubscription = 2100
 
         // Check if interest was not paid
-        if (payment.interest_paid === 0 || payment.interest_paid === null) {
+        if (payment.interest_paid === 0 && payment.remaining_balance > 0 ) {
           totalUnpaidInterest += expectedInterest
           console.log(`[v0] Unpaid interest found for ${payment.period_key}: ${expectedInterest}`)
         }
@@ -521,9 +521,19 @@ export function RecordPaymentUnifiedDialog({
         member_id: loan.member_id || loan.profiles?.member_id,
         full_name: loan.profiles?.full_name || "Unknown",
         payment_date: new Date().toISOString(),
-        interest_paid: interest,
+      
+        interest_paid:
+          isSubscriptionOnly && newLoan === 0
+            ? null
+            : interest,
+      
         amount: totalAmount,
-        monthly_emi: emi,
+      
+        monthly_emi:
+          isSubscriptionOnly && newLoan === 0
+            ? null
+            : emi,
+      
         additional_principal: additionalPrincipal,
         remaining_balance: newRemainingBalance,
         period_month: paymentMonth,
