@@ -160,8 +160,8 @@ export function RecordPaymentUnifiedDialog({
 
       // Get all payment records for this user, ordered by period
       const { data: payments, error } = await supabase
-        .from("loan_payments")
-        .select("period_year, period_month, period_key, interest_paid, monthly_subscription, remaining_balance")
+    .from("loan_payments")
+    .select("period_year, period_month, period_key, interest_paid, monthly_subscription, remaining_balance, monthly_emi, additional_principal")
         .eq("user_id", loan.user_id)
         .order("period_year", { ascending: true })
         .order("period_month", { ascending: true })
@@ -185,20 +185,22 @@ export function RecordPaymentUnifiedDialog({
 
       // Check each previous month for unpaid amounts
       for (const payment of payments) {
-        // Calculate what the interest should have been for that period
-        const expectedInterest = Math.round((payment.remaining_balance * loan.interest_rate) / 100)
-        const expectedSubscription = 2100
-
-        // Check if interest was not paid
-        if (payment.interest_paid === 0 || payment.interest_paid === null) {
-          totalUnpaidInterest += expectedInterest
-          console.log(`[v0] Unpaid interest found for ${payment.period_key}: ${expectedInterest}`)
+        // If EMI was 0 for that period, the user had no active loan — no interest should accrue.
+        // This covers the subscription-only months before conversion.
+        const wasSubscriptionOnlyPeriod =
+          (payment.monthly_emi === 0 || payment.monthly_emi === null) &&
+          (payment.additional_principal === 0 || payment.additional_principal === null)
+      
+        if (!wasSubscriptionOnlyPeriod) {
+          const expectedInterest = Math.round((payment.remaining_balance * loan.interest_rate) / 100)
+          if (payment.interest_paid === 0 || payment.interest_paid === null) {
+            totalUnpaidInterest += expectedInterest
+          }
         }
-
-        // Check if subscription was not paid
+      
+        // Subscription is always due regardless of loan status
         if (payment.monthly_subscription === 0 || payment.monthly_subscription === null) {
-          totalUnpaidSubscription += expectedSubscription
-          console.log(`[v0] Unpaid subscription found for ${payment.period_key}: ${expectedSubscription}`)
+          totalUnpaidSubscription += 2100
         }
       }
 
@@ -214,6 +216,10 @@ export function RecordPaymentUnifiedDialog({
     }
   }
 
+  // ── BUG 3 FIX ─────────────────────────────────────────────────────────────
+  // Previously compared created_at timestamp vs date, which broke for pre-conversion
+  // subscription loans (created_at = May even though loan period is Jan).
+  // Now compares period_year/period_month from the loan row — always correct.
   const checkLastMonthPayment = async () => {
     try {
       const supabase = createClient()
@@ -224,25 +230,29 @@ export function RecordPaymentUnifiedDialog({
 
       console.log("[v0] Checking payment for last month:", lastMonthPeriodKey)
 
-      // Check if loan was created before last month to determine if penalty should apply
+      // FIX: fetch period_year and period_month instead of relying on created_at timestamp
       const { data: loanData, error: loanError } = await supabase
         .from("loans")
-        .select("created_at")
+        .select("created_at, period_year, period_month")
         .eq("id", loan.id)
         .single()
 
       if (loanError) {
-        console.error("[v0] Error fetching loan creation date:", loanError)
+        console.error("[v0] Error fetching loan data:", loanError)
         setMissedLastMonthPayment(false)
         return
       }
 
-      const loanCreatedDate = new Date(loanData.created_at)
-      const lastMonthStart = new Date(lastMonthYear, lastMonth - 1, 1)
-      
-      // If loan was created in or after last month, no penalty should apply
-      if (loanCreatedDate >= lastMonthStart) {
-        console.log("[v0] Loan is new (created after last month start), no penalty check needed")
+      // FIX: compare period_year/period_month (set correctly on creation and on conversion)
+      // instead of comparing a live timestamp — avoids the "created in May but active since Feb" bug
+      const loanPeriodYear = loanData.period_year
+      const loanPeriodMonth = loanData.period_month
+
+      if (
+        loanPeriodYear > lastMonthYear ||
+        (loanPeriodYear === lastMonthYear && loanPeriodMonth >= lastMonth)
+      ) {
+        console.log("[v0] Loan started at or after last month — no penalty check needed")
         setMissedLastMonthPayment(false)
         return
       }
@@ -276,6 +286,7 @@ export function RecordPaymentUnifiedDialog({
       setMissedLastMonthPayment(false)
     }
   }
+  // ── END BUG 3 FIX ──────────────────────────────────────────────────────────
 
   const addAutomaticPenalty = async (supabase: any, periodKey: string) => {
     try {
@@ -327,6 +338,11 @@ export function RecordPaymentUnifiedDialog({
     }
   }
 
+  // ── BUG 4 FIX ─────────────────────────────────────────────────────────────
+  // Previously fell back to `loan.original_loan_amount || loan.loan_amount`.
+  // loan_amount is mutable (reduced every payment), so it gave a wrong opening
+  // balance for the very first backfill month.
+  // Fix: always use original_loan_amount ?? 0 as the immutable starting principal.
   const fetchMostRecentBalance = async () => {
     try {
       const supabase = createClient()
@@ -357,18 +373,21 @@ export function RecordPaymentUnifiedDialog({
         console.log("[v0] Period:", selectedPeriodKey, "Opening Balance:", openingBalance, "(directly from previous closing balance)")
         setPrincipalRemaining(openingBalance)
       } else {
-        // No prior payment found - use original_loan_amount if available, otherwise fallback to loan_amount
-        const fallbackBalance = loan.original_loan_amount || loan.loan_amount || 0
-        console.log("[v0] No prior payment found for period", previousPeriodKey, "Using fallback balance:", fallbackBalance)
+        // FIX: always use original_loan_amount (immutable) — loan_amount is reduced
+        // by every payment so it gives the wrong number as a first-month fallback.
+        // For a subscription_only user with no loan, original_loan_amount is 0, which is correct.
+        const fallbackBalance = loan.original_loan_amount ?? 0
+        console.log("[v0] No prior payment found for period", previousPeriodKey, "Using original_loan_amount as fallback:", fallbackBalance)
         setPrincipalRemaining(fallbackBalance)
       }
     } catch (err) {
       console.error("[v0] Error in fetchMostRecentBalance:", err)
-      // Fallback: use original_loan_amount if available, otherwise loan_amount
-      const fallbackBalance = loan.original_loan_amount || loan.loan_amount || 0
+      // FIX: same — use original_loan_amount, not the mutable loan_amount
+      const fallbackBalance = loan.original_loan_amount ?? 0
       setPrincipalRemaining(fallbackBalance)
     }
   }
+  // ── END BUG 4 FIX ──────────────────────────────────────────────────────────
 
   const checkExistingPayment = async () => {
     setCheckingPayment(true)
@@ -484,11 +503,19 @@ export function RecordPaymentUnifiedDialog({
 
       const totalAmount = interest + emi + additionalPrincipal + subscription
 
-      // If subscription_only user is converting to active, update loan status first
+      // ── BUG 1 FIX ───────────────────────────────────────────────────────────
+      // Previously the conversion update never set created_at / period_*.
+      // That left created_at = May (today) even when converting during a Feb backfill.
+      // The date-scoped query in checkAndAutoInitializeNextMonth then excluded V17
+      // from Mar/Apr counts entirely, making those months permanently un-initializable.
+      // Fix: stamp created_at and period_* to the FIRST DAY of the selected backfill period.
       if (isSubscriptionOnly && newLoan > 0) {
         // Total loan amount = current opening balance + new loan taken
         const totalLoanAmount = principalRemaining + newLoan
         const finalLoanRate = Number(newLoanAmount) > 0 ? (Number(newLoanAmount) / (principalRemaining + Number(newLoanAmount))) * (loan?.interest_rate ?? 1.5) : (loan?.interest_rate ?? 1.5)
+
+        // FIX: use first day of the selected backfill period, not new Date() (today)
+        const loanActivationDate = new Date(selectedYear, selectedMonth - 1, 1).toISOString()
 
         const { error: loanUpdateError } = await supabase
           .from("loans")
@@ -497,6 +524,10 @@ export function RecordPaymentUnifiedDialog({
             original_loan_amount: totalLoanAmount,
             interest_rate: finalLoanRate,
             status: "active",
+            created_at: loanActivationDate,  // e.g. 2026-02-01 — NOT today (May)
+            period_year: selectedYear,         // e.g. 2026
+            period_month: selectedMonth,       // e.g. 2
+            period_key: selectedPeriodKey,     // e.g. "2026-02"
           })
           .eq("id", loan.id)
 
@@ -507,8 +538,16 @@ export function RecordPaymentUnifiedDialog({
 
         // Update local state to reflect the conversion
         setCurrentLoanStatus("active")
-        console.log("[v0] Successfully converted subscription_only to active loan. Opening balance:", principalRemaining, "+ new loan:", newLoan, "= total:", totalLoanAmount)
+        console.log(
+          "[v0] Successfully converted subscription_only to active loan.",
+          "Activation date:", loanActivationDate,
+          "Period:", selectedPeriodKey,
+          "Opening balance:", principalRemaining,
+          "+ new loan:", newLoan,
+          "= total:", totalLoanAmount
+        )
       }
+      // ── END BUG 1 FIX ────────────────────────────────────────────────────────
 
       const { error: paymentError } = await supabase.from("loan_payments").insert({
         loan_id: loan.id,
@@ -651,47 +690,51 @@ export function RecordPaymentUnifiedDialog({
     }
   }
 
+  // ── BUG 2 FIX ─────────────────────────────────────────────────────────────
+  // Previously queried profiles + loans separately → 4-person mismatch,
+  // no date scoping → newly created loans counted for past periods,
+  // used >= instead of strict equality → triggered too early.
+  // Fix: loans table is the single source of truth, scoped to the period
+  // via created_at < first-day-of-next-month. Hard stop if ANY record is missing.
   const checkAndAutoInitializeNextMonth = async (supabase: any, paymentYear: number, paymentMonth: number) => {
     try {
       const periodKey = `${paymentYear}-${String(paymentMonth).padStart(2, "0")}`
 
-      console.log("[v0] Checking if all payments are recorded for period:", periodKey)
+      // First day of the NEXT month — loans created on or after this date didn't
+      // exist during this period and must be excluded.
+      // new Date(2026, 2, 1) → "2026-03-01" (JS month is 0-indexed, so paymentMonth=2
+      // means February, and paymentMonth without -1 rolls to March — correct cutoff).
+      const periodCutoff = new Date(paymentYear, paymentMonth, 1).toISOString()
 
-      const { data: allUsersData, error: allUsersError } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("role", "member")
-      
-      if (allUsersError) {
-        console.error("[v0] Error fetching members:", allUsersError)
-        return
-      }
-      
-      const { data: activeLoanUsersData, error: activeLoanUsersError } = await supabase
+      console.log("[v0] Checking payments for period:", periodKey, "| Loan cutoff:", periodCutoff)
+
+      // SOURCE OF TRUTH: every loan (active or subscription_only) whose created_at
+      // falls before the end of this period = that person needed a payment this month.
+      // After Bug 1 fix, a converted subscription user has created_at = Feb 1 when
+      // converted during a Feb backfill, so they're correctly included from Feb onwards.
+      const { data: allLoans, error: allLoansError } = await supabase
         .from("loans")
-        .select("user_id")
-        .eq("status", "active")
-      
-      if (activeLoanUsersError) {
-        console.error("[v0] Error fetching active loan users:", activeLoanUsersError)
+        .select("user_id, id, status, created_at")
+        .in("status", ["active", "subscription_only", "paid"])
+        .lt("created_at", periodCutoff)
+
+      if (allLoansError) {
+        console.error("[v0] Error fetching loans for period:", allLoansError)
         return
       }
-      
-      // UNIQUE users having active loans
-      const activeLoanUsers = new Set(
-        activeLoanUsersData?.map((l: any) => l.user_id) || []
-      )
-      
-      // Users without active loans = subscription_only users
-      const subscriptionOnlyUsers =
-        allUsersData?.filter(
-          (user: any) => !activeLoanUsers.has(user.id)
-        ).length || 0
-      
-      // TOTAL UNIQUE USERS needing payment
-      const totalUsersNeedingPayment =
-        activeLoanUsers.size + subscriptionOnlyUsers
 
+      if (!allLoans || allLoans.length === 0) {
+        console.log("[v0] No loans existed during period", periodKey)
+        return
+      }
+
+      // Deduplicate by user_id — one person may theoretically have multiple loan rows
+      const allLoanUserIds = new Set(allLoans.map((l: any) => l.user_id))
+      const totalUsersNeedingPayment = allLoanUserIds.size
+
+      console.log("[v0] Users who needed payment in", periodKey, ":", totalUsersNeedingPayment)
+
+      // Fetch all payment records for this period
       const { data: paymentsThisPeriod, error: paymentsError } = await supabase
         .from("loan_payments")
         .select("user_id")
@@ -702,60 +745,62 @@ export function RecordPaymentUnifiedDialog({
         return
       }
 
-      if (!paymentsThisPeriod || paymentsThisPeriod.length === 0) {
-        console.log("[v0] No payments recorded yet for this period")
+      // Only count payments whose user_id actually had a loan this period.
+      // Prevents a stray backfill entry for a "future" user from inflating the count.
+      const paidUserIds = new Set(
+        (paymentsThisPeriod || [])
+          .map((p: any) => p.user_id)
+          .filter((uid: string) => allLoanUserIds.has(uid))
+      )
+      const totalPaymentsRecorded = paidUserIds.size
+
+      // Missing = had a loan this period but zero payment record found
+      const missingUserIds = [...allLoanUserIds].filter(uid => !paidUserIds.has(uid))
+      const missingCount = missingUserIds.length
+
+      console.log(
+        "[v0] Period:", periodKey,
+        "| Total needing payment:", totalUsersNeedingPayment,
+        "| Paid:", totalPaymentsRecorded,
+        "| Missing:", missingCount,
+        "| Missing user IDs:", missingUserIds
+      )
+
+      if (missingCount > 0) {
+        // Hard stop — do NOT initialize until every eligible user has a record
+        console.log("[v0] Initialization blocked —", missingCount, "payment(s) still missing")
         return
       }
 
-      const uniqueUsersPaid = new Set(paymentsThisPeriod.map((p: any) => p.user_id))
-      const totalPaymentsRecorded = uniqueUsersPaid.size
+      // Every user who had a loan in this period has a payment — safe to initialize
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
 
-      console.log(
-        "[v0] Active loan users:",
-        activeLoanUsers.size,
-        "Subscription-only users:",
-        subscriptionOnlyUsers,
-        "Total users needing payment:",
-        totalUsersNeedingPayment,
-        "Total payments recorded:",
-        totalPaymentsRecorded,
-      )
+      if (!user) {
+        console.error("[v0] User not authenticated for auto-initialization")
+        return
+      }
 
-      if (totalUsersNeedingPayment > 0 && totalPaymentsRecorded >= totalUsersNeedingPayment) {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
+      console.log("[v0] All", totalUsersNeedingPayment, "payments confirmed for", periodKey, "— initializing next month")
 
-        if (!user) {
-          console.error("[v0] User not authenticated for auto-initialization")
-          return
-        }
+      const { data, error: rpcError } = await supabase.rpc("initialize_new_month", {
+        p_period_key: periodKey,
+        p_created_by: user.id,
+      })
 
-        console.log(
-          "[v0] All payments (active loans + subscription-only) recorded! Auto-initializing month:",
-          periodKey,
-        )
-
-        const { data, error: rpcError } = await supabase.rpc("initialize_new_month", {
-          p_period_key: periodKey,
-          p_created_by: user.id,
-        })
-
-        if (rpcError) {
-          console.error("[v0] Auto-initialization error:", rpcError)
-        } else if (data) {
-          const result = typeof data === "string" ? JSON.parse(data) : data
-          console.log("[v0] Auto-initialization successful:", result)
-          alert(`All payments recorded! Successfully initialized ${periodKey}`)
-        }
-      } else {
-        const remaining = totalUsersNeedingPayment - totalPaymentsRecorded
-        console.log("[v0] Not all payments recorded yet. Need", remaining > 0 ? remaining : 0, "more payments")
+      if (rpcError) {
+        console.error("[v0] Auto-initialization error:", rpcError)
+      } else if (data) {
+        const result = typeof data === "string" ? JSON.parse(data) : data
+        console.log("[v0] Auto-initialization successful:", result)
+        alert(`All ${totalUsersNeedingPayment} payments recorded for ${periodKey}! Next month initialized.`)
       }
     } catch (err) {
       console.error("[v0] Error in auto-initialization check:", err)
     }
   }
+  // ── END BUG 2 FIX ──────────────────────────────────────────────────────────
 
   const isPaymentRecorded = isMarked || hasPaymentThisMonth
 
