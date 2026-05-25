@@ -424,6 +424,8 @@ export function RecordPaymentUnifiedDialog({
     const interest = interestPayment ? Number(interestPayment) : totalInterestDue
     const additionalPrincipal = Number(additionalPrincipalPayment)
     const newLoan = Number(newLoanAmount)
+    const wasSubscriptionOnly = currentLoanStatus === "subscription_only"
+    
     const subscription = Number(monthlySubscription) || 2100 + accumulatedSubscription
     const penalty = Number(penaltyPayment) || 0
 
@@ -525,14 +527,14 @@ export function RecordPaymentUnifiedDialog({
         payment_date: new Date().toISOString(),
       
         interest_paid:
-          isSubscriptionOnly && newLoan === 0
+          wasSubscriptionOnly && newLoan === 0
             ? null
             : interest,
       
         amount: totalAmount,
       
         monthly_emi:
-          isSubscriptionOnly && newLoan === 0
+          wasSubscriptionOnly && newLoan === 0
             ? null
             : emi,
       
@@ -569,12 +571,12 @@ export function RecordPaymentUnifiedDialog({
       // For subscription_only users, they never reach "paid" status - it's ongoing
       // For active loans, mark as paid only if balance is fully cleared
       // Detect if subscription_only user is converting to active
-      const hasConvertedToActive = isSubscriptionOnly && newLoan > 0
+      const hasConvertedToActive = wasSubscriptionOnly && newLoan > 0
       
       // For active loans, mark as paid only if balance is fully cleared
       const shouldComplete =
         newRemainingBalance <= 0 &&
-        !isSubscriptionOnly &&
+        !wasSubscriptionOnly &&
         !hasConvertedToActive
       
       const newStatus = shouldComplete
