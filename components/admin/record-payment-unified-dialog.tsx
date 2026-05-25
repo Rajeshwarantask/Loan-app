@@ -195,11 +195,28 @@ export function RecordPaymentUnifiedDialog({
         const expectedSubscription = 2100
 
         // Check if interest was not paid
-        const hadActiveLoan = payment.monthly_emi !== null
-          
-        if ( hadActiveLoan && (payment.interest_paid === 0 || payment.interest_paid === null)) {
+        const emiValue =
+          payment.monthly_emi === null
+            ? null
+            : Number(payment.monthly_emi)
+        
+        const interestValue =
+          payment.interest_paid === null
+            ? null
+            : Number(payment.interest_paid)
+        
+        const hadActiveLoan =
+          emiValue !== null && emiValue > 0
+        
+        if (
+          hadActiveLoan &&
+          (interestValue === 0 || interestValue === null)
+        ) {
           totalUnpaidInterest += expectedInterest
-          console.log(`[v0] Unpaid interest found for ${payment.period_key}: ${expectedInterest}`)
+        
+          console.log(
+            `[v0] Unpaid interest found for ${payment.period_key}: ${expectedInterest}`
+          )
         }
 
         // Check if subscription was not paid
