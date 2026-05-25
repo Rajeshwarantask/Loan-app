@@ -159,14 +159,12 @@ export function RecordPaymentUnifiedDialog({
   const fetchAccumulatedUnpaidAmounts = async () => {
     try {
       const supabase = createClient()
-      const now = new Date()
 
       console.log("[v0] Fetching accumulated unpaid amounts for user:", loan.user_id)
 
-      // Get all payment records for this user, ordered by period
       const { data: payments, error } = await supabase
         .from("loan_payments")
-        .select("period_year, period_month, period_key, interest_paid, monthly_emi, monthly_subscription, remaining_balance")
+        .select("period_year, period_month, period_key, interest_paid, monthly_emi, monthly_subscription, remaining_balance, conversion_status")
         .eq("user_id", loan.user_id)
         .order("period_year", { ascending: true })
         .order("period_month", { ascending: true })
@@ -188,41 +186,33 @@ export function RecordPaymentUnifiedDialog({
       let totalUnpaidInterest = 0
       let totalUnpaidSubscription = 0
 
-      // Check each previous month for unpaid amounts
       for (const payment of payments) {
-        // Calculate what the interest should have been for that period
-        const expectedInterest = Math.round((payment.remaining_balance * loan.interest_rate) / 100)
-        const expectedSubscription = 2100
+        const interestValue = payment.interest_paid === null ? null : Number(payment.interest_paid)
+        const subscriptionValue = payment.monthly_subscription === null ? null : Number(payment.monthly_subscription)
+        const remainingBalance = Number(payment.remaining_balance)
 
-        // Check if interest was not paid
-        const emiValue =
-          payment.monthly_emi === null
-            ? null
-            : Number(payment.monthly_emi)
-        
-        const interestValue =
-          payment.interest_paid === null
-            ? null
-            : Number(payment.interest_paid)
-        
-        const hadActiveLoan =
-          emiValue !== null && emiValue > 0
-        
-        if (
-          hadActiveLoan &&
-          (interestValue === 0 || interestValue === null)
-        ) {
-          totalUnpaidInterest += expectedInterest
-        
-          console.log(
-            `[v0] Unpaid interest found for ${payment.period_key}: ${expectedInterest}`
-          )
+        // Skip conversion month — was subscription-only when paid, interest was never expected
+        if (payment.conversion_status === 'converted') {
+          console.log(`[v0] Skipping conversion month ${payment.period_key}`)
+          // Still check subscription for this month
+          if (subscriptionValue === 0 || subscriptionValue === null) {
+            totalUnpaidSubscription += 2100
+            console.log(`[v0] Unpaid subscription in conversion month ${payment.period_key}`)
+          }
+          continue
         }
 
-        // Check if subscription was not paid
-        if (payment.monthly_subscription === 0 || payment.monthly_subscription === null) {
-          totalUnpaidSubscription += expectedSubscription
-          console.log(`[v0] Unpaid subscription found for ${payment.period_key}: ${expectedSubscription}`)
+        // Check unpaid interest — only for periods with active loan balance
+        if (remainingBalance > 0 && (interestValue === 0 || interestValue === null)) {
+          const expectedInterest = Math.round((remainingBalance * loan.interest_rate) / 100)
+          totalUnpaidInterest += expectedInterest
+          console.log(`[v0] Unpaid interest found for ${payment.period_key}: ${expectedInterest}`)
+        }
+
+        // Check unpaid subscription
+        if (subscriptionValue === 0 || subscriptionValue === null) {
+          totalUnpaidSubscription += 2100
+          console.log(`[v0] Unpaid subscription found for ${payment.period_key}`)
         }
       }
 
@@ -563,6 +553,7 @@ export function RecordPaymentUnifiedDialog({
         status: "paid",
         monthly_subscription: subscription,
         penalty: penalty,
+        conversion_status: wasSubscriptionOnly && newLoan > 0 ? 'converted' : null,
       })
 
       if (paymentError) {
