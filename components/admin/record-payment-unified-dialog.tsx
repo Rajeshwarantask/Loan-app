@@ -75,12 +75,7 @@ export function RecordPaymentUnifiedDialog({
   const selectedYear = backfillYear ?? currentRealYear
   const selectedPeriodKey = `${selectedYear}-${String(selectedMonth).padStart(2, "0")}`
   const isBackfill = selectedMonth !== currentRealMonth || selectedYear !== currentRealYear
-  const monthName = new Date(
-  selectedYear,
-  selectedMonth - 1
-).toLocaleString("default", {
-  month: "short",
-})
+
   const defaultEmi = 5000
 
   // State to track current loan status (refreshes when needed)
@@ -159,12 +154,14 @@ export function RecordPaymentUnifiedDialog({
   const fetchAccumulatedUnpaidAmounts = async () => {
     try {
       const supabase = createClient()
+      const now = new Date()
 
       console.log("[v0] Fetching accumulated unpaid amounts for user:", loan.user_id)
 
+      // Get all payment records for this user, ordered by period
       const { data: payments, error } = await supabase
         .from("loan_payments")
-        .select("period_year, period_month, period_key, interest_paid, monthly_emi, monthly_subscription, remaining_balance, conversion_status")
+        .select("period_year, period_month, period_key, interest_paid, monthly_subscription, remaining_balance")
         .eq("user_id", loan.user_id)
         .order("period_year", { ascending: true })
         .order("period_month", { ascending: true })
@@ -186,33 +183,22 @@ export function RecordPaymentUnifiedDialog({
       let totalUnpaidInterest = 0
       let totalUnpaidSubscription = 0
 
+      // Check each previous month for unpaid amounts
       for (const payment of payments) {
-        const interestValue = payment.interest_paid === null ? null : Number(payment.interest_paid)
-        const subscriptionValue = payment.monthly_subscription === null ? null : Number(payment.monthly_subscription)
-        const remainingBalance = Number(payment.remaining_balance)
+        // Calculate what the interest should have been for that period
+        const expectedInterest = Math.round((payment.remaining_balance * loan.interest_rate) / 100)
+        const expectedSubscription = 2100
 
-        // Skip conversion month — was subscription-only when paid, interest was never expected
-        if (payment.conversion_status === 'converted') {
-          console.log(`[v0] Skipping conversion month ${payment.period_key}`)
-          // Still check subscription for this month
-          if (subscriptionValue === 0 || subscriptionValue === null) {
-            totalUnpaidSubscription += 2100
-            console.log(`[v0] Unpaid subscription in conversion month ${payment.period_key}`)
-          }
-          continue
-        }
-
-        // Check unpaid interest — only for periods with active loan balance
-        if (remainingBalance > 0 && (interestValue === 0 || interestValue === null)) {
-          const expectedInterest = Math.round((remainingBalance * loan.interest_rate) / 100)
+        // Check if interest was not paid
+        if (payment.interest_paid === 0 || payment.interest_paid === null) {
           totalUnpaidInterest += expectedInterest
           console.log(`[v0] Unpaid interest found for ${payment.period_key}: ${expectedInterest}`)
         }
 
-        // Check unpaid subscription
-        if (subscriptionValue === 0 || subscriptionValue === null) {
-          totalUnpaidSubscription += 2100
-          console.log(`[v0] Unpaid subscription found for ${payment.period_key}`)
+        // Check if subscription was not paid
+        if (payment.monthly_subscription === 0 || payment.monthly_subscription === null) {
+          totalUnpaidSubscription += expectedSubscription
+          console.log(`[v0] Unpaid subscription found for ${payment.period_key}: ${expectedSubscription}`)
         }
       }
 
@@ -431,8 +417,6 @@ export function RecordPaymentUnifiedDialog({
     const interest = interestPayment ? Number(interestPayment) : totalInterestDue
     const additionalPrincipal = Number(additionalPrincipalPayment)
     const newLoan = Number(newLoanAmount)
-    const wasSubscriptionOnly = currentLoanStatus === "subscription_only"
-    
     const subscription = Number(monthlySubscription) || 2100 + accumulatedSubscription
     const penalty = Number(penaltyPayment) || 0
 
@@ -532,19 +516,9 @@ export function RecordPaymentUnifiedDialog({
         member_id: loan.member_id || loan.profiles?.member_id,
         full_name: loan.profiles?.full_name || "Unknown",
         payment_date: new Date().toISOString(),
-      
-        interest_paid:
-          wasSubscriptionOnly && newLoan === 0
-            ? null
-            : interest,
-      
+        interest_paid: interest,
         amount: totalAmount,
-      
-        monthly_emi:
-          wasSubscriptionOnly && newLoan === 0
-            ? null
-            : emi,
-      
+        monthly_emi: emi,
         additional_principal: additionalPrincipal,
         remaining_balance: newRemainingBalance,
         period_month: paymentMonth,
@@ -553,7 +527,6 @@ export function RecordPaymentUnifiedDialog({
         status: "paid",
         monthly_subscription: subscription,
         penalty: penalty,
-        conversion_status: wasSubscriptionOnly && newLoan > 0 ? 'converted' : null,
       })
 
       if (paymentError) {
@@ -579,13 +552,11 @@ export function RecordPaymentUnifiedDialog({
       // For subscription_only users, they never reach "paid" status - it's ongoing
       // For active loans, mark as paid only if balance is fully cleared
       // Detect if subscription_only user is converting to active
-      const hasConvertedToActive = wasSubscriptionOnly && newLoan > 0
+      const hasConvertedToActive = isSubscriptionOnly && newLoan > 0
       
       // For active loans, mark as paid only if balance is fully cleared
       const shouldComplete =
-        newRemainingBalance <= 0 &&
-        !wasSubscriptionOnly &&
-        !hasConvertedToActive
+        newRemainingBalance <= 0 && !hasConvertedToActive
       
       const newStatus = shouldComplete
         ? "paid"
@@ -809,9 +780,9 @@ export function RecordPaymentUnifiedDialog({
             {isSubscriptionOnly ? "Record Subscription Payment" : "Record Monthly Payment"}
           </DialogTitle>
           <DialogDescription className="text-xs md:text-sm">
-            {isSubscriptionOnly
-              ? `Record subscription payment for ${loan.profiles?.full_name} for ${monthName} ${selectedYear}`
-              : `Record payment for ${loan.profiles?.full_name} for ${monthName} ${selectedYear}`}
+            {isSubscriptionOnly 
+              ? `Record subscription payment for ${loan.profiles?.full_name}`
+              : `Record payment for ${loan.profiles?.full_name}`}
           </DialogDescription>
         </DialogHeader>
 
