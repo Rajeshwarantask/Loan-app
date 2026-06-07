@@ -89,7 +89,7 @@ export function AdminLoansTable({ loans, backfillMonth, backfillYear }: AdminLoa
       .eq("loan_id", loan.id)
       .eq("period_key", currentPeriodKey)
       .limit(1)
-      .single()
+      .maybeSingle()
 
     if (currentPayment) {
       // Format month year from period_key (the actual period paid for), not payment_date (when it was recorded)
@@ -110,7 +110,7 @@ export function AdminLoansTable({ loans, backfillMonth, backfillYear }: AdminLoa
       .order("period_year", { ascending: false })
       .order("period_month", { ascending: false })
       .limit(1)
-      .single()
+      .maybeSingle()
 
     latestClosingBalances[loan.id] = latestPayment?.remaining_balance || null
 
@@ -130,7 +130,7 @@ export function AdminLoansTable({ loans, backfillMonth, backfillYear }: AdminLoa
           .eq("loan_id", loan.id)
           .eq("period_key", previousPeriodKey)
           .limit(1)
-          .single()
+          .maybeSingle()
 
         if (previousPayment) {
           // Opening balance for current period = Previous period's closing (remaining_balance)
