@@ -686,16 +686,6 @@ export function RecordPaymentUnifiedDialog({
 
       console.log("[v0] Checking if all payments are recorded for period:", periodKey)
 
-      const { data: allUsersData, error: allUsersError } = await supabase
-        .from("profiles")
-        .select("id")
-        .eq("role", "member")
-      
-      if (allUsersError) {
-        console.error("[v0] Error fetching members:", allUsersError)
-        return
-      }
-      
       const { data: activeLoanUsersData, error: activeLoanUsersError } = await supabase
         .from("loans")
         .select("user_id")
@@ -706,21 +696,12 @@ export function RecordPaymentUnifiedDialog({
         return
       }
       
-      // UNIQUE users having active loans
       const activeLoanUsers = new Set(
         activeLoanUsersData?.map((l: any) => l.user_id) || []
       )
       
-      // Users without active loans = subscription_only users
-      const subscriptionOnlyUsers =
-        allUsersData?.filter(
-          (user: any) => !activeLoanUsers.has(user.id)
-        ).length || 0
+      const totalUsersNeedingPayment = activeLoanUsers.size
       
-      // TOTAL UNIQUE USERS needing payment
-      const totalUsersNeedingPayment =
-        activeLoanUsers.size + subscriptionOnlyUsers
-
       const { data: paymentsThisPeriod, error: paymentsError } = await supabase
         .from("loan_payments")
         .select("user_id")
@@ -740,11 +721,7 @@ export function RecordPaymentUnifiedDialog({
       const totalPaymentsRecorded = uniqueUsersPaid.size
 
       console.log(
-        "[v0] Active loan users:",
-        activeLoanUsers.size,
-        "Subscription-only users:",
-        subscriptionOnlyUsers,
-        "Total users needing payment:",
+        "[v0] Users needing payment:",
         totalUsersNeedingPayment,
         "Total payments recorded:",
         totalPaymentsRecorded,
