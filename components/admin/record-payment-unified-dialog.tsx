@@ -699,7 +699,7 @@ export function RecordPaymentUnifiedDialog({
       const { data: activeLoanUsersData, error: activeLoanUsersError } = await supabase
         .from("loans")
         .select("user_id")
-        .eq("status", "active")
+        .in("status", ["active", "subscription_only"])
       
       if (activeLoanUsersError) {
         console.error("[v0] Error fetching active loan users:", activeLoanUsersError)
