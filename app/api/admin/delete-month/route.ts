@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
-// Validate period key format (YYYY-MM)
 function validatePeriodKey(periodKey: string): { valid: boolean; error?: string } {
   const periodPattern = /^\d{4}-\d{2}$/
   if (!periodPattern.test(periodKey)) {
@@ -27,68 +26,38 @@ export async function DELETE(request: Request) {
   try {
     const supabase = await createClient()
 
-    // Check authentication
     const {
       data: { user },
     } = await supabase.auth.getUser()
 
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-    // Check admin role
-    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single()
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single()
 
-    if (profile?.role !== "admin") {
+    if (profile?.role !== "admin")
       return NextResponse.json({ error: "Forbidden - Admin only" }, { status: 403 })
-    }
 
-    const { periodKey, isCurrentMonth } = await request.json()
+    const { periodKey } = await request.json()
 
-    if (!periodKey) {
+    if (!periodKey)
       return NextResponse.json({ error: "Period key is required" }, { status: 400 })
-    }
 
-    // Validate period key format
     const validation = validatePeriodKey(periodKey)
-    if (!validation.valid) {
+    if (!validation.valid)
       return NextResponse.json({ error: validation.error }, { status: 400 })
-    }
 
-    console.log("[v0] DELETE month request - periodKey:", periodKey, "isCurrentMonth:", isCurrentMonth)
+    console.log("[v0] DELETE month snapshot - periodKey:", periodKey)
 
-    // Delete all related data for this period (both current and backfill)
-    // 1. Delete from loan_payments
-    const { count: paymentsDeleted, error: paymentDeleteError } = await supabase
-      .from("loan_payments")
-      .delete()
-      .eq("period_key", periodKey)
-
-    if (paymentDeleteError) {
-      console.error("[v0] Error deleting loan_payments:", paymentDeleteError)
-      throw paymentDeleteError
-    }
-
-    console.log("[v0] Deleted", paymentsDeleted, "records from loan_payments for", periodKey)
-
-    // 2. Delete from additional_loan
-    const { count: loansDeleted, error: loanDeleteError } = await supabase
-      .from("additional_loan")
-      .delete()
-      .eq("period_key", periodKey)
-
-    if (loanDeleteError) {
-      console.error("[v0] Error deleting additional_loan:", loanDeleteError)
-      throw loanDeleteError
-    }
-
-    console.log("[v0] Deleted", loansDeleted, "records from additional_loan for", periodKey)
-
-    // 3. Delete from monthly_loan_records (current month)
+    // ✅ ONLY delete the monthly snapshot — loan_payments and additional_loan are preserved
     const { count: recordsDeleted, error: recordDeleteError } = await supabase
       .from("monthly_loan_records")
       .delete()
       .eq("period_key", periodKey)
+      .select("*", { count: "exact", head: true })
 
     if (recordDeleteError) {
       console.error("[v0] Error deleting monthly_loan_records:", recordDeleteError)
@@ -97,11 +66,12 @@ export async function DELETE(request: Request) {
 
     console.log("[v0] Deleted", recordsDeleted, "records from monthly_loan_records for", periodKey)
 
-    // 4. Delete from monthly_loan_records_history (past month)
+    // ✅ Also clear from history if it was archived there
     const { count: historyDeleted, error: historyDeleteError } = await supabase
       .from("monthly_loan_records_history")
       .delete()
       .eq("period_key", periodKey)
+      .select("*", { count: "exact", head: true })
 
     if (historyDeleteError) {
       console.error("[v0] Error deleting monthly_loan_records_history:", historyDeleteError)
@@ -110,24 +80,20 @@ export async function DELETE(request: Request) {
 
     console.log("[v0] Deleted", historyDeleted, "records from monthly_loan_records_history for", periodKey)
 
-    const totalDeleted = (paymentsDeleted || 0) + (loansDeleted || 0) + (recordsDeleted || 0) + (historyDeleted || 0)
-
     return NextResponse.json({
       success: true,
-      message: `Deleted all data for ${periodKey} (${totalDeleted} total records)`,
+      message: `Reset snapshot for ${periodKey}. Re-initialize to rebuild from payment data.`,
       details: {
-        paymentsDeleted,
-        loansDeleted,
-        recordsDeleted,
-        historyDeleted,
-        totalDeleted,
+        recordsDeleted: recordsDeleted ?? 0,
+        historyDeleted: historyDeleted ?? 0,
+        totalDeleted: (recordsDeleted ?? 0) + (historyDeleted ?? 0),
       },
     })
   } catch (error) {
     console.error("[v0] Error in DELETE /api/admin/delete-month:", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to delete month data" },
-      { status: 500 },
+      { status: 500 }
     )
   }
 }
