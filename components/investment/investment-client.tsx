@@ -20,6 +20,8 @@ interface Investment {
   member_id: string | null
   investment_type: string
   amount: number
+  current_value: number
+  notes?: string
   period_month: number
   period_year: number
   period_key: string
@@ -46,7 +48,13 @@ export function InvestmentClient({ userId, memberId }: InvestmentClientProps) {
   const [investments, setInvestments] = useState<Investment[]>([])
   const [amount, setAmount] = useState("")
   const [investmentType, setInvestmentType] = useState("")
+  const [currentValue, setCurrentValue] = useState("")
+  const [notes, setNotes] = useState("")
   const [loading, setLoading] = useState(false)
+  const [investmentMonth, setInvestmentMonth] = useState(() => {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+})
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date()
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
@@ -110,16 +118,21 @@ export function InvestmentClient({ userId, memberId }: InvestmentClientProps) {
 
     setLoading(true)
 
-    const now = new Date()
-    const periodKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+    const periodKey = investmentMonth
+    const [year, month] = investmentMonth.split("-")
+    
+    const periodYear = Number(year)
+    const periodMonth = Number(month)
 
     const { error } = await supabase.from("investments").insert({
       user_id: userId,
       member_id: memberId,
       investment_type: investmentType,
       amount: amountNum,
-      period_month: now.getMonth() + 1,
-      period_year: now.getFullYear(),
+      current_value: Number(currentValue) || amountNum,
+      notes,
+      period_month: periodMonth,
+      period_year: periodYear,
       period_key: periodKey,
     })
 
@@ -130,6 +143,8 @@ export function InvestmentClient({ userId, memberId }: InvestmentClientProps) {
       toast.success("Investment added successfully")
       setAmount("")
       setInvestmentType("")
+      setCurrentValue("")
+      setNotes("")
 
       // Refresh data
       await fetchAvailableMonths()
@@ -165,7 +180,18 @@ export function InvestmentClient({ userId, memberId }: InvestmentClientProps) {
 
   // Calculate totals and percentages
   const totalAmount = investments.reduce((sum, inv) => sum + Number(inv.amount), 0)
-
+  const totalCurrentValue = investments.reduce(
+    (sum, inv) => sum + Number(inv.current_value || 0),
+    0
+  )
+  
+  const totalProfit = totalCurrentValue - totalAmount
+  
+  const profitPercent =
+    totalAmount > 0
+      ? ((totalProfit / totalAmount) * 100).toFixed(2)
+      : "0"
+  
   const groupedInvestments = investments.reduce((acc, inv) => {
     const type = inv.investment_type
   
@@ -173,16 +199,17 @@ export function InvestmentClient({ userId, memberId }: InvestmentClientProps) {
           acc[type] = 0
         }
       
-        acc[type] += Number(inv.amount)
+        acc[type] += Number(inv.current_value || inv.amount)
         return acc
       }, {} as Record<string, number>)
       
-      const chartData = Object.entries(groupedInvestments).map(([name, value]) => ({
+     const chartData = Object.entries(groupedInvestments).map(([name, value]) => ({
         name,
         value,
-        percentage: totalAmount > 0
-          ? ((value / totalAmount) * 100).toFixed(1)
-          : "0",
+        percentage:
+          totalCurrentValue > 0
+            ? ((value / totalCurrentValue) * 100).toFixed(1)
+            : "0",
       }))
 
   return (
@@ -220,6 +247,38 @@ export function InvestmentClient({ userId, memberId }: InvestmentClientProps) {
                       onChange={(e) => setInvestmentType(toTitleCase(e.target.value))}
                       required
                     />              
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="currentValue">Current Value (₹)</Label>
+                <Input
+                  id="currentValue"
+                  type="number"
+                  placeholder="Current market value"
+                  value={currentValue}
+                  onChange={(e) => setCurrentValue(e.target.value)}
+                  min="0"
+                />
+              </div>
+              
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="notes">Notes</Label>
+                <Input
+                  id="notes"
+                  placeholder="Optional remarks"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="investmentMonth">Investment Month</Label>
+              
+                <Input
+                  id="investmentMonth"
+                  type="month"
+                  value={investmentMonth}
+                  onChange={(e) => setInvestmentMonth(e.target.value)}
+                  required
+                />
               </div>
             </div>
 
@@ -270,7 +329,55 @@ export function InvestmentClient({ userId, memberId }: InvestmentClientProps) {
           </div>
         </CardContent>
       </Card>
-
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-sm text-muted-foreground">Invested</p>
+              <p className="text-2xl font-bold">
+                ₹{totalAmount.toLocaleString("en-IN")}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-sm text-muted-foreground">Current Value</p>
+              <p className="text-2xl font-bold">
+                ₹{totalCurrentValue.toLocaleString("en-IN")}
+              </p>
+            </CardContent>
+          </Card>
+        
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-sm text-muted-foreground">Profit / Loss</p>
+              <p
+                className={`text-2xl font-bold ${
+                  totalProfit >= 0
+                    ? "text-green-600"
+                    : "text-red-600"
+                }`}
+              >
+                ₹{totalProfit.toLocaleString("en-IN")}
+              </p>
+            </CardContent>
+          </Card>
+        
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-sm text-muted-foreground">Return %</p>
+              <p
+                className={`text-2xl font-bold ${
+                  Number(profitPercent) >= 0
+                    ? "text-green-600"
+                    : "text-red-600"
+                }`}
+              >
+                {profitPercent}%
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      
       {/* Investment History Table */}
       <Card>
         <CardHeader>
@@ -293,23 +400,47 @@ export function InvestmentClient({ userId, memberId }: InvestmentClientProps) {
                   <TableRow>
                     <TableHead>Date</TableHead>
                     <TableHead>Investment Type</TableHead>
-                    <TableHead className="text-right">Amount (₹)</TableHead>
+                    <TableHead className="text-right">Invested (₹)</TableHead>
+                    <TableHead className="text-right">Current Value (₹)</TableHead>
+                    <TableHead className="text-right">Profit/Loss (₹)</TableHead>
                     <TableHead className="text-center">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {investments.map((investment) => (
                     <TableRow key={investment.id}>
-                      <TableCell>
-                        {new Date(investment.created_at).toLocaleDateString("en-IN", {
-                          year: "numeric",
-                          month: "short",
-                          day: "numeric",
-                        })}
-                      </TableCell>
-                      <TableCell>{investment.investment_type}</TableCell>
-                      <TableCell className="text-right">₹{Number(investment.amount).toLocaleString("en-IN")}</TableCell>
-                      <TableCell className="text-center">
+                        <TableCell>
+                          {new Date(investment.created_at).toLocaleDateString("en-IN", {
+                            year: "numeric",
+                            month: "short",
+                            day: "numeric",
+                          })}
+                        </TableCell>
+                      
+                        <TableCell>{investment.investment_type}</TableCell>
+                      
+                        <TableCell className="text-right">
+                          ₹{Number(investment.amount).toLocaleString("en-IN")}
+                        </TableCell>
+                      
+                        <TableCell className="text-right">
+                          ₹{Number(investment.current_value || 0).toLocaleString("en-IN")}
+                        </TableCell>
+                      
+                        <TableCell
+                          className={`text-right font-medium ${
+                            Number(investment.current_value || 0) - Number(investment.amount) >= 0
+                              ? "text-green-600"
+                              : "text-red-600"
+                          }`}
+                        >
+                          ₹{(
+                            Number(investment.current_value || 0) -
+                            Number(investment.amount)
+                          ).toLocaleString("en-IN")}
+                        </TableCell>
+                      
+                        <TableCell className="text-center">
                         <Button
                           variant="ghost"
                           size="icon"
