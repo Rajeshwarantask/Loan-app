@@ -69,6 +69,14 @@ export function RecordPaymentUnifiedDialog({
   const [missedLastMonthPayment, setMissedLastMonthPayment] = useState(false)
   const [accumulatedInterest, setAccumulatedInterest] = useState(0)
   const [accumulatedSubscription, setAccumulatedSubscription] = useState(0)
+  // Pending interest months: each entry = { periodKey, openingBalance, interest, paymentId }
+  const [pendingInterestMonths, setPendingInterestMonths] = useState<
+    { periodKey: string; openingBalance: number; interest: number; paymentId: string }[]
+  >([])
+  // Which past month the user explicitly intends to settle — no automatic order assumed
+  const [selectedSettlementPeriod, setSelectedSettlementPeriod] = useState<string | null>(null)
+  // Separate input: amount to settle the selected past month's interest
+  const [settlementPayment, setSettlementPayment] = useState("")
 
   // Use backfill period from parent if provided, otherwise default to current month
   const selectedMonth = backfillMonth ?? currentRealMonth
@@ -130,7 +138,8 @@ export function RecordPaymentUnifiedDialog({
   // EMI, additional principal, and new loan will affect NEXT month's balance and interest
   const balanceForCurrentInterest = principalRemaining
   const currentMonthInterest = Math.max(0, Math.round((balanceForCurrentInterest * interest_rate) / 100))
-  const totalInterestDue = accumulatedInterest + currentMonthInterest
+  // Current month interest only — accumulated past months are settled separately via settlementPayment
+  const totalInterestDue = currentMonthInterest
   const totalSubscriptionDue = accumulatedSubscription + 2100
 
   const handleAdditionalPrincipalChange = (value: string) => {
@@ -160,71 +169,68 @@ export function RecordPaymentUnifiedDialog({
     try {
       const supabase = createClient()
 
-      console.log("[v0] Fetching accumulated unpaid amounts for user:", loan.user_id)
+      console.log("[v0] Fetching accumulated unpaid amounts (penalty-column approach) for user:", loan.user_id)
 
-      const { data: payments, error } = await supabase
+      const interestRate = Number(loan.interest_rate || 1.5)
+
+      // ── Pending interest: fetch all records where penalty > 0 ──
+      // penalty column = opening_balance of that month when interest was not fully paid
+      const { data: penaltyRows, error: penaltyError } = await supabase
         .from("loan_payments")
-        .select("period_year, period_month, period_key, interest_paid, monthly_emi, monthly_subscription, remaining_balance, conversion_status")
+        .select("id, period_key, penalty, monthly_subscription")
         .eq("user_id", loan.user_id)
-        .order("period_year", { ascending: true })
-        .order("period_month", { ascending: true })
+        .gt("penalty", 0)
+        .lt("period_key", selectedPeriodKey)
+        .order("period_key", { ascending: true })
 
-      if (error) {
-        console.error("[v0] Error fetching payment history:", error)
+      if (penaltyError) {
+        console.error("[v0] Error fetching penalty rows:", penaltyError)
         setAccumulatedInterest(0)
+        setPendingInterestMonths([])
+      } else {
+        // unpaid_interest per month = penalty (opening_balance) x rate / 100
+        const months = (penaltyRows || []).map(row => ({
+          periodKey: row.period_key as string,
+          openingBalance: Number(row.penalty),
+          interest: Math.round((Number(row.penalty) * interestRate) / 100),
+          paymentId: row.id as string,
+        }))
+
+        const totalUnpaidInterest = months.reduce((sum, m) => sum + m.interest, 0)
+
+        console.log("[v0] Pending interest months:", months)
+        console.log("[v0] Total accumulated unpaid interest:", totalUnpaidInterest)
+
+        setPendingInterestMonths(months)
+        setAccumulatedInterest(totalUnpaidInterest)
+
+      }
+      // ── Accumulated unpaid subscription ──
+      const { data: payments, error: subError } = await supabase
+        .from("loan_payments")
+        .select("period_key, monthly_subscription")
+        .eq("user_id", loan.user_id)
+        .lt("period_key", selectedPeriodKey)
+
+      if (subError) {
+        console.error("[v0] Error fetching subscription history:", subError)
         setAccumulatedSubscription(0)
         return
       }
 
-      if (!payments || payments.length === 0) {
-        console.log("[v0] No payment history found")
-        setAccumulatedInterest(0)
-        setAccumulatedSubscription(0)
-        return
-      }
-
-      let totalUnpaidInterest = 0
-      let totalUnpaidSubscription = 0
-
-      for (const payment of payments) {
-        const interestValue = payment.interest_paid === null ? null : Number(payment.interest_paid)
-        const subscriptionValue = payment.monthly_subscription === null ? null : Number(payment.monthly_subscription)
-        const remainingBalance = Number(payment.remaining_balance)
-
-        // Skip conversion month — was subscription-only when paid, interest was never expected
-        if (payment.conversion_status === 'converted') {
-          console.log(`[v0] Skipping conversion month ${payment.period_key}`)
-          // Still check subscription for this month
-          if (subscriptionValue === 0 || subscriptionValue === null) {
-            totalUnpaidSubscription += 2100
-            console.log(`[v0] Unpaid subscription in conversion month ${payment.period_key}`)
-          }
-          continue
-        }
-
-        // Check unpaid interest — only for periods with active loan balance
-        if (remainingBalance > 0 && (interestValue === 0 || interestValue === null)) {
-          const expectedInterest = Math.round((remainingBalance * loan.interest_rate) / 100)
-          totalUnpaidInterest += expectedInterest
-          console.log(`[v0] Unpaid interest found for ${payment.period_key}: ${expectedInterest}`)
-        }
-
-        // Check unpaid subscription
-        if (subscriptionValue === 0 || subscriptionValue === null) {
-          totalUnpaidSubscription += 2100
-          console.log(`[v0] Unpaid subscription found for ${payment.period_key}`)
-        }
-      }
-
-      console.log("[v0] Total accumulated interest:", totalUnpaidInterest)
-      console.log("[v0] Total accumulated subscription:", totalUnpaidSubscription)
-
-      setAccumulatedInterest(totalUnpaidInterest)
-      setAccumulatedSubscription(totalUnpaidSubscription)
+      const totalSubExpected = (payments || []).length * 2100
+      const totalSubPaid = (payments || []).reduce(
+        (sum, p) => sum + (p.monthly_subscription == null || p.monthly_subscription === \'\' ? 0 : Number(p.monthly_subscription)),
+        0
+      )
+      const unpaidSubscription = Math.max(0, totalSubExpected - totalSubPaid)
+      console.log(\`[v0] Subscription — expected: \${totalSubExpected}, paid: \${totalSubPaid}, unpaid: \${unpaidSubscription}\`)
+      setAccumulatedSubscription(unpaidSubscription)
     } catch (err) {
       console.error("[v0] Error in fetchAccumulatedUnpaidAmounts:", err)
       setAccumulatedInterest(0)
       setAccumulatedSubscription(0)
+      setPendingInterestMonths([])
     }
   }
 
@@ -428,7 +434,9 @@ export function RecordPaymentUnifiedDialog({
     }
 
     const emi = Number(emiPayment)
-    const interest = interestPayment ? Number(interestPayment) : totalInterestDue
+    // interest = current month only; past month settlement is handled via settlementPayment separately
+    const interest = interestPayment ? Number(interestPayment) : currentMonthInterest
+    const settlementAmount = Number(settlementPayment) || 0
     const additionalPrincipal = Number(additionalPrincipalPayment)
     const newLoan = Number(newLoanAmount)
     const wasSubscriptionOnly = currentLoanStatus === "subscription_only"
@@ -498,7 +506,7 @@ export function RecordPaymentUnifiedDialog({
       const paymentYear = selectedYear
       const periodKey = selectedPeriodKey
 
-      const totalAmount = interest + emi + additionalPrincipal + subscription
+      const totalAmount = interest + emi + additionalPrincipal + subscription + settlementAmount
 
       // If subscription_only user is converting to active, update loan status first
       if (isSubscriptionOnly && newLoan > 0) {
@@ -526,25 +534,40 @@ export function RecordPaymentUnifiedDialog({
         console.log("[v0] Successfully converted subscription_only to active loan. Opening balance:", principalRemaining, "+ new loan:", newLoan, "= total:", totalLoanAmount)
       }
 
+      // ── Penalty tracking logic ──
+      // penalty = opening_balance  →  that month's interest is unresolved
+      // penalty = 0               →  that month's interest is fully settled
+      //
+      // Two completely separate fields:
+      //   interest         = current month payment only
+      //   settlementAmount = payment toward the user-selected past month only
+      // No merging. No automatic order. No FIFO/LIFO.
+      const isActiveWithLoan = !wasSubscriptionOnly || newLoan > 0
+      const interestForThisMonth = wasSubscriptionOnly && newLoan === 0 ? null : interest
+
+      // Current month: underpaid if paid < expected
+      const thisMonthUnderpaid =
+        isActiveWithLoan && currentMonthInterest > 0 && (interestForThisMonth ?? 0) < currentMonthInterest
+      const penaltyToStore = thisMonthUnderpaid ? principalRemaining : 0
+
+      console.log(`[v0] Current month — expected: ${currentMonthInterest}, paid: ${interestForThisMonth ?? 0}, underpaid: ${thisMonthUnderpaid}, penalty: ${penaltyToStore}`)
+
       const { error: paymentError } = await supabase.from("loan_payments").insert({
         loan_id: loan.id,
         user_id: loan.user_id,
         member_id: loan.member_id || loan.profiles?.member_id,
         full_name: loan.profiles?.full_name || "Unknown",
         payment_date: new Date().toISOString(),
-      
-        interest_paid:
-          wasSubscriptionOnly && newLoan === 0
-            ? null
-            : interest,
-      
+
+        interest_paid: interestForThisMonth,
+
         amount: totalAmount,
-      
+
         monthly_emi:
           wasSubscriptionOnly && newLoan === 0
             ? null
             : emi,
-      
+
         additional_principal: additionalPrincipal,
         remaining_balance: newRemainingBalance,
         period_month: paymentMonth,
@@ -552,7 +575,8 @@ export function RecordPaymentUnifiedDialog({
         period_key: periodKey,
         status: "paid",
         monthly_subscription: subscription,
-        penalty: penalty,
+        // penalty = opening_balance if current month underpaid, 0 if fully paid
+        penalty: penaltyToStore,
         conversion_status: wasSubscriptionOnly && newLoan > 0 ? 'converted' : null,
       })
 
@@ -561,9 +585,29 @@ export function RecordPaymentUnifiedDialog({
         throw new Error(paymentError.message || "Failed to record payment")
       }
 
-      // Penalty is now stored directly in loan_payments.penalty column - no separate penalties table needed
-      if (penalty > 0) {
-        console.log("[v0] Penalty", penalty, "recorded in loan_payments for period", periodKey)
+      console.log(`[v0] Payment recorded for ${periodKey}. penalty=${penaltyToStore}`)
+
+      // Past month settlement: ONLY the user-selected month. Nothing else touched.
+      // settlementAmount is a dedicated field — completely separate from current month interest.
+      // Clear penalty only when settlementAmount >= that month's full interest due.
+      if (selectedSettlementPeriod && settlementAmount > 0 && pendingInterestMonths.length > 0) {
+        const targetMonth = pendingInterestMonths.find(m => m.periodKey === selectedSettlementPeriod)
+        if (targetMonth) {
+          if (settlementAmount >= targetMonth.interest) {
+            const { error: settlePenaltyError } = await supabase
+              .from("loan_payments")
+              .update({ penalty: 0 })
+              .eq("id", targetMonth.paymentId)
+
+            if (settlePenaltyError) {
+              console.error(`[v0] Error clearing penalty for ${targetMonth.periodKey}:`, settlePenaltyError)
+            } else {
+              console.log(`[v0] Cleared ${targetMonth.periodKey} (paid ${settlementAmount} >= required ${targetMonth.interest})`)
+            }
+          } else {
+            console.log(`[v0] settlementAmount (${settlementAmount}) < required (${targetMonth.interest}) for ${targetMonth.periodKey} — not cleared`)
+          }
+        }
       }
 
       const { data: loanData, error: loanError } = await supabase
@@ -820,15 +864,55 @@ export function RecordPaymentUnifiedDialog({
             </div>
           )}
 
-          {(accumulatedInterest > 0 || accumulatedSubscription > 0) && (
-            <div className="p-2 md:p-3 bg-yellow-50 rounded-lg border border-yellow-300">
-              <div className="text-[10px] md:text-sm font-semibold text-yellow-800 mb-1">
+          {(pendingInterestMonths.length > 0 || accumulatedSubscription > 0) && (
+            <div className="p-2 md:p-3 bg-yellow-50 rounded-lg border border-yellow-300 space-y-1.5">
+              <div className="text-[10px] md:text-sm font-semibold text-yellow-800">
                 Unpaid Amounts Carried Forward
               </div>
-              {accumulatedInterest > 0 && (
-                <div className="text-[9px] md:text-xs text-yellow-700">
-                  Previous Interest: {formatCurrency(accumulatedInterest)}
-                </div>
+              {pendingInterestMonths.length > 0 && (
+                <>
+                  {/* Per-month breakdown + settle row in one compact block */}
+                  {pendingInterestMonths.map(m => (
+                    <div key={m.periodKey} className="flex justify-between text-[9px] md:text-xs text-yellow-700">
+                      <span>{m.periodKey}</span>
+                      <span>{formatCurrency(m.interest)}</span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between text-[9px] md:text-xs font-bold text-yellow-800 border-t border-yellow-200 pt-1">
+                    <span>Total</span>
+                    <span>{formatCurrency(accumulatedInterest)}</span>
+                  </div>
+                  {/* Compact settle row: dropdown + amount side by side */}
+                  <div className="flex gap-1 pt-0.5">
+                    <select
+                      value={selectedSettlementPeriod ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value || null
+                        setSelectedSettlementPeriod(v)
+                        // Pre-fill amount with that month's required interest
+                        const m = pendingInterestMonths.find(x => x.periodKey === v)
+                        setSettlementPayment(m ? m.interest.toString() : "")
+                      }}
+                      disabled={hasPaymentThisMonth}
+                      className="flex-1 h-7 text-[9px] md:text-xs rounded border border-yellow-400 bg-white px-1"
+                    >
+                      <option value="">Settle a month…</option>
+                      {pendingInterestMonths.map(m => (
+                        <option key={m.periodKey} value={m.periodKey}>{m.periodKey}</option>
+                      ))}
+                    </select>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="1"
+                      placeholder="₹0"
+                      value={settlementPayment}
+                      onChange={(e) => setSettlementPayment(e.target.value)}
+                      disabled={hasPaymentThisMonth || !selectedSettlementPeriod}
+                      className="w-20 md:w-24 h-7 text-[9px] md:text-xs"
+                    />
+                  </div>
+                </>
               )}
               {accumulatedSubscription > 0 && (
                 <div className="text-[9px] md:text-xs text-yellow-700">
@@ -860,23 +944,21 @@ export function RecordPaymentUnifiedDialog({
 
             <div className="space-y-1">
               <Label htmlFor="interest" className="text-[10px] md:text-xs">
-                Interest Payment {accumulatedInterest > 0 && "(Including Previous)"}
+                Interest Payment (Current Month)
               </Label>
               <Input
                 id="interest"
                 type="number"
                 step="1"
                 min="0"
-                placeholder={`₹${totalInterestDue}`}
-                value={interestPayment || totalInterestDue}
+                placeholder={`₹${currentMonthInterest}`}
+                value={interestPayment || currentMonthInterest}
                 onChange={(e) => setInterestPayment(e.target.value)}
                 className="h-7 md:h-9 text-xs md:text-sm bg-white"
                 disabled={hasPaymentThisMonth}
               />
               <p className="text-[9px] md:text-xs text-muted-foreground">
-                {accumulatedInterest > 0
-                  ? `Previous: ${formatCurrency(accumulatedInterest)} + Current: ${formatCurrency(currentMonthInterest)}`
-                  : `Current: ${formatCurrency(currentMonthInterest)}`}
+                Current: {formatCurrency(currentMonthInterest)}
               </p>
             </div>
           </div>
