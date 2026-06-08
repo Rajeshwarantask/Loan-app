@@ -582,20 +582,18 @@ export function RecordPaymentUnifiedDialog({
       const hasConvertedToActive = wasSubscriptionOnly && newLoan > 0
       
       // For active loans, mark as paid only if balance is fully cleared
-      const shouldComplete =
+      const loanCleared =
         newRemainingBalance <= 0 &&
         !wasSubscriptionOnly &&
         !hasConvertedToActive
       
-      const newStatus = shouldComplete
-        ? "paid"
+      const newStatus = loanCleared
+        ? "subscription_only"
         : hasConvertedToActive
           ? "active"
           : isSubscriptionOnly
             ? "subscription_only"
-            : loanData?.status === "approved"
-              ? "active"
-              : loanData?.status || "active"
+            : "active"
 
       // Keep loans.loan_amount in sync with loan_payments.remaining_balance (both = current outstanding)
       // IMPORTANT: original_loan_amount should NEVER be updated - it remains static as the checkpoint
