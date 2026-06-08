@@ -26,19 +26,20 @@ interface Investment {
   created_at: string
 }
 
-const INVESTMENT_TYPES = [
-  "Gold",
-  "Mutual Funds",
-  "Stock Trading",
-  "Fixed Deposit",
-  "Other",
-]
-
 const CHART_COLORS = ["#fb923c", "#7dd3fc", "#34d399", "#fbbf24", "#a78bfa", "#f472b6", "#94a3b8"]
 
 interface InvestmentClientProps {
   userId: string
   memberId: string | null
+}
+
+const toTitleCase = (str: string) => {
+  return str
+    .toLowerCase()
+    .split(" ")
+    .filter(Boolean)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ")
 }
 
 export function InvestmentClient({ userId, memberId }: InvestmentClientProps) {
@@ -165,17 +166,24 @@ export function InvestmentClient({ userId, memberId }: InvestmentClientProps) {
   // Calculate totals and percentages
   const totalAmount = investments.reduce((sum, inv) => sum + Number(inv.amount), 0)
 
-  const chartData = INVESTMENT_TYPES.map((type) => {
-    const typeTotal = investments
-      .filter((inv) => inv.investment_type === type)
-      .reduce((sum, inv) => sum + Number(inv.amount), 0)
-
-    return {
-      name: type,
-      value: typeTotal,
-      percentage: totalAmount > 0 ? ((typeTotal / totalAmount) * 100).toFixed(1) : "0",
-    }
-  }).filter((item) => item.value > 0)
+  const groupedInvestments = investments.reduce((acc, inv) => {
+    const type = inv.investment_type
+  
+        if (!acc[type]) {
+          acc[type] = 0
+        }
+      
+        acc[type] += Number(inv.amount)
+        return acc
+      }, {} as Record<string, number>)
+      
+      const chartData = Object.entries(groupedInvestments).map(([name, value]) => ({
+        name,
+        value,
+        percentage: totalAmount > 0
+          ? ((value / totalAmount) * 100).toFixed(1)
+          : "0",
+      }))
 
   return (
     <div className="space-y-6">
@@ -204,18 +212,14 @@ export function InvestmentClient({ userId, memberId }: InvestmentClientProps) {
 
               <div className="space-y-2">
                 <Label htmlFor="type">Investment Type</Label>
-                <Select value={investmentType} onValueChange={setInvestmentType} required>
-                  <SelectTrigger id="type">
-                    <SelectValue placeholder="Select investment type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {INVESTMENT_TYPES.map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {type}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                    <Input
+                      id="type"
+                      type="text"
+                      placeholder="e.g. Gold, Mutual Funds, Real Estate"
+                      value={investmentType}
+                      onChange={(e) => setInvestmentType(toTitleCase(e.target.value))}
+                      required
+                    />              
               </div>
             </div>
 
