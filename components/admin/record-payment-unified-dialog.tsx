@@ -867,49 +867,75 @@ export function RecordPaymentUnifiedDialog({
                 Unpaid Amounts Carried Forward
               </div>
               {pendingInterestMonths.length > 0 && (
-                <>
-                  {/* Per-month breakdown + settle row in one compact block */}
-                  {pendingInterestMonths.map(m => (
-                    <div key={m.periodKey} className="flex justify-between text-[9px] md:text-xs text-yellow-700">
-                      <span>{m.periodKey}</span>
-                      <span>{formatCurrency(m.interest)}</span>
+                <div className="flex items-start justify-between gap-3">
+              
+                  {/* LEFT SIDE */}
+                  <div className="flex-1">
+                    {pendingInterestMonths.map((m) => (
+                      <div
+                        key={m.periodKey}
+                        className="flex justify-between text-[9px] md:text-xs text-yellow-700"
+                      >
+                        <span>{m.periodKey}</span>
+                        <span>{formatCurrency(m.interest)}</span>
+                      </div>
+                    ))}
+              
+                    <div className="flex justify-between text-[9px] md:text-xs font-bold text-yellow-800 border-t border-yellow-200 mt-1 pt-1">
+                      <span>Total</span>
+                      <span>{formatCurrency(accumulatedInterest)}</span>
                     </div>
-                  ))}
-                  <div className="flex justify-between text-[9px] md:text-xs font-bold text-yellow-800 border-t border-yellow-200 pt-1">
-                    <span>Total</span>
-                    <span>{formatCurrency(accumulatedInterest)}</span>
                   </div>
-                  {/* Compact settle row: dropdown + amount side by side */}
-                  <div className="flex gap-1 pt-0.5">
+              
+                  {/* RIGHT SIDE */}
+                  <div className="flex gap-1 shrink-0">
+              
                     <select
                       value={selectedSettlementPeriod ?? ""}
                       onChange={(e) => {
                         const v = e.target.value || null
                         setSelectedSettlementPeriod(v)
-                        // Pre-fill amount with that month's required interest
-                        const m = pendingInterestMonths.find(x => x.periodKey === v)
-                        setSettlementPayment(m ? m.interest.toString() : "")
+              
+                        const m = pendingInterestMonths.find(
+                          (x) => x.periodKey === v
+                        )
+              
+                        setSettlementPayment(
+                          m ? m.interest.toString() : ""
+                        )
                       }}
                       disabled={hasPaymentThisMonth}
-                      className="flex-1 h-7 text-[9px] md:text-xs rounded border border-yellow-400 bg-white px-1"
+                      className="w-32 md:w-40 h-7 text-[9px] md:text-xs rounded border border-yellow-400 bg-white px-1"
                     >
-                      <option value="">Settle a month…</option>
-                      {pendingInterestMonths.map(m => (
-                        <option key={m.periodKey} value={m.periodKey}>{m.periodKey}</option>
+                      <option value="">Select</option>
+              
+                      {pendingInterestMonths.map((m) => (
+                        <option
+                          key={m.periodKey}
+                          value={m.periodKey}
+                        >
+                          {m.periodKey}
+                        </option>
                       ))}
                     </select>
+              
                     <Input
                       type="number"
                       min="0"
                       step="1"
-                      placeholder="₹0"
                       value={settlementPayment}
-                      onChange={(e) => setSettlementPayment(e.target.value)}
-                      disabled={hasPaymentThisMonth || !selectedSettlementPeriod}
-                      className="w-20 md:w-24 h-7 text-[9px] md:text-xs"
+                      onChange={(e) =>
+                        setSettlementPayment(e.target.value)
+                      }
+                      disabled={
+                        hasPaymentThisMonth ||
+                        !selectedSettlementPeriod
+                      }
+                      className="w-20 h-7 text-[9px] md:text-xs"
                     />
                   </div>
-                </>
+              
+                </div>
               )}
               {accumulatedSubscription > 0 && (
                 <div className="text-[9px] md:text-xs text-yellow-700">
