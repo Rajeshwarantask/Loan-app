@@ -221,7 +221,7 @@ export function RecordPaymentUnifiedDialog({
       const totalSubExpected = (payments || []).length * 2100
       const totalSubPaid = (payments || []).reduce((sum, p) => sum + (p.monthly_subscription == null || p.monthly_subscription === "" ? 0 : Number(p.monthly_subscription) ), 0)
       const unpaidSubscription = Math.max(0, totalSubExpected - totalSubPaid)
-      console.log(\`[v0] Subscription — expected: \${totalSubExpected}, paid: \${totalSubPaid}, unpaid: \${unpaidSubscription}\`)
+      console.log(`[v0] Subscription — expected: ${totalSubExpected}, paid: ${totalSubPaid}, unpaid: ${unpaidSubscription}`)
       setAccumulatedSubscription(unpaidSubscription)
     } catch (err) {
       console.error("[v0] Error in fetchAccumulatedUnpaidAmounts:", err)
