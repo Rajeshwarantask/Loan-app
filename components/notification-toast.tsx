@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useRef } from "react"
+import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { X, Bell } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -19,6 +20,7 @@ export function NotificationToast() {
   const [isVisible, setIsVisible] = useState(false)
   const [dismissedNotices, setDismissedNotices] = useState<Set<string>>(new Set())
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const router = useRouter()
   const subscriptionRef = useRef<any>(null)
   const initializationDoneRef = useRef(false)
 
@@ -137,6 +139,9 @@ export function NotificationToast() {
       }, 600)
     }
   }
+    const handleToastClick = () => {
+        router.push("/notices")
+    }
 
   if (!currentNotice || !isAuthenticated) return null
 
@@ -182,12 +187,13 @@ export function NotificationToast() {
       )}
     >
       <div
-        className={cn(
-          "rounded-lg border-l-4 shadow-lg overflow-hidden",
-          style.bg,
-          style.borderColor
-        )}
-      >
+          onClick={handleToastClick}
+          className={cn(
+            "rounded-lg border-l-4 shadow-lg overflow-hidden cursor-pointer transition-all duration-200 hover:shadow-xl hover:scale-[1.02]",
+            style.bg,
+            style.borderColor
+          )}
+        >
         <div className="p-4 md:p-5">
           <div className="flex items-start gap-3">
             <Bell className={cn("h-5 w-5 mt-0.5 flex-shrink-0", style.icon)} />
@@ -205,13 +211,16 @@ export function NotificationToast() {
               </p>
             </div>
             <button
-              onClick={handleClose}
-              className={cn(
-                "flex-shrink-0 transition-all duration-200 hover:opacity-70",
-                style.text
-              )}
-              aria-label="Close notification"
-            >
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleClose()
+                }}
+                className={cn(
+                  "flex-shrink-0 transition-all duration-200 hover:opacity-70",
+                  style.text
+                )}
+                aria-label="Close notification"
+              >
               <X className="h-5 w-5" />
             </button>
           </div>
