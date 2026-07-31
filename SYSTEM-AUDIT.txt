@@ -1,0 +1,83 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                  SYSTEM AUDIT: OPENING BALANCE USAGE                       ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+FINDINGS:
+═════════════════════════════════════════════════════════════════════════════
+
+✅ 1. Monthly Cycle Initialization (scripts/74-implement-balance-architecture.sql)
+   Status: GOOD - Uses opening_balance correctly
+   
+   Function: initialize_new_month(p_period_key, p_created_by)
+   
+   What it does:
+   ├─ Creates monthly_loan_records for each active user
+   └─ Uses get_opening_balance() to determine each period's opening balance
+   
+   Current logic:
+   ├─ Priority 1: Previous month's remaining_balance (from loan_payments table)
+   ├─ Priority 2: Original loan amount (if first month)
+   └─ Priority 3: Reconstructed value (fallback)
+   
+   ✓ Already using opening_balance correctly
+   ✓ Data flows from loan_payments table
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+❌ 2. Record Payment Dialog (components/admin/record-payment-unified-dialog.tsx)
+   Status: NEEDS FIX - Calculates opening_balance locally instead of querying
+   
+   Current issue:
+   ├─ Line 64-66: Uses local state principalRemaining
+   │   setPrincipalRemaining(() => Math.max(0, loan?.original_loan_amount || loan?.loan_amount || 0))
+   ├─ Line 569: Sends principalRemaining as opening_balance
+   └─ Problem: Doesn't query actual opening_balance from loan_payments table
+   
+   Should do:
+   ├─ Query loan_payments table for this period's opening_balance
+   ├─ OR use get_opening_balance() function
+   └─ Store ACTUAL opening_balance value (not calculated)
+   
+   Example issue:
+   ├─ Current: Uses original_loan_amount as opening_balance (WRONG for month 2+)
+   └─ Correct: Should use previous month's remaining_balance as opening_balance
+   
+   Impact:
+   ├─ Interest calculations may be wrong for months 2+
+   └─ Penalty tracking uses wrong reference balance
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+❌ 3. Penalty Calculation (components/admin/record-payment-unified-dialog.tsx)
+   Status: NEEDS FIX - Stores actual opening_balance, should store reference
+   
+   Current logic (line ~500-600):
+   ├─ Calculates required interest
+   ├─ If underpaid: penalty = principalRemaining (opening balance value)
+   └─ Problem: Storing actual balance value instead of reference
+   
+   Should be:
+   ├─ When user underpays interest
+   ├─ penalty = opening_balance (reference for future interest calculation)
+   └─ This allows: interest_owed = penalty × rate / 100
+   
+   Current behavior:
+   ├─ penalty = 100000 (actual balance)
+   └─ Doesn't clearly indicate "unpaid interest from month X"
+   
+   Correct behavior:
+   ├─ penalty = opening_balance (from that period)
+   ├─ Query: SELECT (penalty × 1.5 / 100) as interest_owed
+   └─ Clear: "This is the opening balance where interest wasn't paid"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ACTIONS NEEDED:
+═════════════════════════════════════════════════════════════════════════════
+
+1. ✓ DONE: Migration 76 auto-fills all existing opening_balance records
+2. ✓ DONE: API route (app/api/payments/route.ts) captures opening_balance
+3. ✗ TODO: Fix record-payment-unified-dialog.tsx to QUERY opening_balance
+4. ✗ TODO: Update penalty logic to use queried opening_balance
+5. ✗ TODO: Verify all interest calculations use opening_balance column
+

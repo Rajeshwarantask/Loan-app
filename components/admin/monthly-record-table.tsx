@@ -30,7 +30,6 @@ interface MonthlyRecord {
   previous_month_total_income: number
   total_income_current_month: number
   difference: number
-  previous_month_total_loan_outstanding: number
   available_loan_amount: number
   profiles: Profile
 }
@@ -78,9 +77,6 @@ export function MonthlyRecordTable({ records, monthYear }: MonthlyRecordTablePro
             <TableHead className="text-right w-[90px] whitespace-normal">Total Income (Current Month)</TableHead>
             <TableHead className="text-right w-[90px] whitespace-normal">Previous Month Total Income</TableHead>
             <TableHead className="text-right w-[80px] whitespace-normal">Difference</TableHead>
-            <TableHead className="text-right w-[90px] whitespace-normal">
-              Previous Month Total Loan Outstanding
-            </TableHead>
             <TableHead className="text-right w-[90px] whitespace-normal">Available Loan</TableHead>
             <TableHead className="text-center w-[80px] whitespace-normal">Status</TableHead>
             <TableHead className="text-right w-[80px]">Actions</TableHead>
@@ -89,7 +85,7 @@ export function MonthlyRecordTable({ records, monthYear }: MonthlyRecordTablePro
         <TableBody>
           {sortedRecords.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={17} className="text-center py-8 text-muted-foreground">
+              <TableCell colSpan={16} className="text-center py-8 text-muted-foreground">
                 No records found for this month
               </TableCell>
             </TableRow>
@@ -121,10 +117,13 @@ export function MonthlyRecordTable({ records, monthYear }: MonthlyRecordTablePro
                   {formatCurrency(record.previous_month_total_income)}
                 </TableCell>
                 <TableCell className="text-right px-2 md:px-4">{formatCurrency(record.difference)}</TableCell>
-                <TableCell className="text-right px-2 md:px-4">
-                  {formatCurrency(record.previous_month_total_loan_outstanding)}
-                </TableCell>
-                <TableCell className="text-right text-green-600 font-medium px-2 md:px-4">
+                <TableCell
+                  className={`text-right font-medium px-2 md:px-4 ${
+                    (record.available_loan_amount ?? 0) <= 0
+                      ? "text-red-600"
+                      : "text-green-600"
+                  }`}
+                >
                   {formatCurrency(record.available_loan_amount)}
                 </TableCell>
                 <TableCell className="text-center px-2 md:px-4">

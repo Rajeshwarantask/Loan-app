@@ -52,7 +52,6 @@ BEGIN
       previous_month_total_income,
       total_income_current_month,
       difference,
-      previous_month_total_loan_outstanding,
       available_loan_amount
     )
     SELECT 
@@ -74,21 +73,36 @@ BEGIN
       
       -- Opening Balance
       COALESCE(
-        (SELECT mlr.total_loan_outstanding 
-         FROM monthly_loan_records mlr 
-         WHERE mlr.user_id = u.id 
-           AND mlr.period_month = prev_month 
-           AND mlr.period_year = prev_year
-         LIMIT 1),
-        (SELECT mlrh.total_loan_outstanding
-         FROM monthly_loan_records_history mlrh
-         WHERE mlrh.user_id = u.id
-         ORDER BY mlrh.period_year DESC, mlrh.period_month DESC
-         LIMIT 1),
-        (SELECT COALESCE(SUM(l.loan_amount), 0)
-         FROM loans l
-         WHERE l.user_id = u.id AND l.status = 'active')
-      ) AS total_loan_taken,
+    (
+        SELECT lp.opening_balance
+        FROM loan_payments lp
+        WHERE lp.user_id = u.id
+          AND lp.period_key = p_period_key
+        ORDER BY lp.created_at DESC
+        LIMIT 1
+    ),
+    (
+        SELECT mlr.total_loan_outstanding
+        FROM monthly_loan_records mlr
+        WHERE mlr.user_id = u.id
+          AND mlr.period_month = prev_month
+          AND mlr.period_year = prev_year
+        LIMIT 1
+    ),
+    (
+        SELECT mlrh.total_loan_outstanding
+        FROM monthly_loan_records_history mlrh
+        WHERE mlrh.user_id = u.id
+        ORDER BY mlrh.period_year DESC, mlrh.period_month DESC
+        LIMIT 1
+    ),
+    (
+        SELECT COALESCE(SUM(l.loan_amount),0)
+        FROM loans l
+        WHERE l.user_id=u.id
+          AND l.status='active'
+        )
+    ) AS total_loan_taken,
       
       -- Additional Principal from loan_payments
       COALESCE(
@@ -109,43 +123,67 @@ BEGIN
       ) AS new_loan_taken,
       
       -- Total Loan Outstanding
-      COALESCE(
-        (SELECT mlr.total_loan_outstanding 
-         FROM monthly_loan_records mlr 
-         WHERE mlr.user_id = u.id 
-           AND mlr.period_month = prev_month 
-           AND mlr.period_year = prev_year
-         LIMIT 1),
-        (SELECT mlrh.total_loan_outstanding
-         FROM monthly_loan_records_history mlrh
-         WHERE mlrh.user_id = u.id
-         ORDER BY mlrh.period_year DESC, mlrh.period_month DESC
-         LIMIT 1),
-        (SELECT COALESCE(SUM(l.loan_amount), 0)
-         FROM loans l
-         WHERE l.user_id = u.id AND l.status = 'active')
-      ) 
-      + COALESCE(
-        (SELECT COALESCE(SUM(al.additional_loan_amount), 0)
-         FROM additional_loan al
-         WHERE al.user_id = u.id
-           AND al.period_key = p_period_key),
-        0
-      )
-      - COALESCE(
-        (SELECT COALESCE(SUM(lp.additional_principal), 0)
-         FROM loan_payments lp
-         WHERE lp.user_id = u.id
-           AND lp.period_key = p_period_key),
-        0
-      )
-      - COALESCE(
-        (SELECT COALESCE(SUM(lp.monthly_emi), 0)
-         FROM loan_payments lp
-         WHERE lp.user_id = u.id
-           AND lp.period_key = p_period_key),
-        0
-      ) AS total_loan_outstanding,
+      -- Total Loan Outstanding (Closing Balance)
+COALESCE(
+  -- Primary source: current month's payment closing balance
+  (
+    SELECT lp.remaining_balance
+    FROM loan_payments lp
+    WHERE lp.user_id = u.id
+      AND lp.period_key = p_period_key
+    ORDER BY lp.created_at DESC
+    LIMIT 1
+  ),
+
+  -- Fallback 1: previous monthly record closing balance + current month changes
+  (
+    COALESCE(
+      (SELECT mlr.total_loan_outstanding
+       FROM monthly_loan_records mlr 
+       WHERE mlr.user_id = u.id 
+         AND mlr.period_month = prev_month 
+         AND mlr.period_year = prev_year
+       LIMIT 1),
+
+      (SELECT mlrh.total_loan_outstanding
+       FROM monthly_loan_records_history mlrh
+       WHERE mlrh.user_id = u.id
+       ORDER BY mlrh.period_year DESC, mlrh.period_month DESC
+       LIMIT 1),
+
+      (SELECT COALESCE(SUM(l.loan_amount), 0)
+       FROM loans l
+       WHERE l.user_id = u.id 
+         AND l.status = 'active')
+    )
+    +
+    COALESCE(
+      (SELECT SUM(al.additional_loan_amount)
+       FROM additional_loan al
+       WHERE al.user_id = u.id
+         AND al.period_key = p_period_key),
+      0
+    )
+    -
+    COALESCE(
+      (SELECT SUM(lp.additional_principal)
+       FROM loan_payments lp
+       WHERE lp.user_id = u.id
+         AND lp.period_key = p_period_key),
+      0
+    )
+    -
+    COALESCE(
+      (SELECT SUM(lp.monthly_emi)
+       FROM loan_payments lp
+       WHERE lp.user_id = u.id
+         AND lp.period_key = p_period_key),
+      0
+    )
+  ),
+
+  0
+) AS total_loan_outstanding,
       
       -- Monthly Interest Income
       COALESCE(
@@ -262,62 +300,65 @@ BEGIN
         0
       ) AS difference,
       
-      -- Previous Month Total Loan Outstanding
-      COALESCE(
-        (SELECT mlr.total_loan_outstanding
-         FROM monthly_loan_records mlr
-         WHERE mlr.user_id = u.id
-           AND mlr.period_month = prev_month
-           AND mlr.period_year = prev_year
-         LIMIT 1),
-        (SELECT mlrh.total_loan_outstanding
-         FROM monthly_loan_records_history mlrh
-         WHERE mlrh.user_id = u.id
-         ORDER BY mlrh.period_year DESC, mlrh.period_month DESC
-         LIMIT 1),
-        0
-      ) AS previous_month_total_loan_outstanding,
-      
-      -- Available Loan Amount
-      400000 - (
-        COALESCE(
-          (SELECT mlr.total_loan_outstanding 
-           FROM monthly_loan_records mlr 
-           WHERE mlr.user_id = u.id 
-             AND mlr.period_month = prev_month 
-             AND mlr.period_year = prev_year
-           LIMIT 1),
-          (SELECT mlrh.total_loan_outstanding
-           FROM monthly_loan_records_history mlrh
-           WHERE mlrh.user_id = u.id
-           ORDER BY mlrh.period_year DESC, mlrh.period_month DESC
-           LIMIT 1),
-          (SELECT COALESCE(SUM(l.loan_amount), 0)
-           FROM loans l
-           WHERE l.user_id = u.id AND l.status = 'active')
-        ) 
-        + COALESCE(
-          (SELECT COALESCE(SUM(al.additional_loan_amount), 0)
-           FROM additional_loan al
-           WHERE al.user_id = u.id
-             AND al.period_key = p_period_key),
-          0
-        )
-        - COALESCE(
-          (SELECT COALESCE(SUM(lp.additional_principal), 0)
-           FROM loan_payments lp
-           WHERE lp.user_id = u.id
-             AND lp.period_key = p_period_key),
-          0
-        )
-        - COALESCE(
-          (SELECT COALESCE(SUM(lp.monthly_emi), 0)
-           FROM loan_payments lp
-           WHERE lp.user_id = u.id
-             AND lp.period_key = p_period_key),
-          0
-        )
-      ) AS available_loan_amount
+    -- Available Loan Amount
+400000 - COALESCE(
+  (
+    SELECT lp.remaining_balance
+    FROM loan_payments lp
+    WHERE lp.user_id = u.id
+      AND lp.period_key = p_period_key
+    ORDER BY lp.created_at DESC
+    LIMIT 1
+  ),
+
+  -- fallback calculation
+  (
+    COALESCE(
+      (SELECT mlr.total_loan_outstanding
+       FROM monthly_loan_records mlr
+       WHERE mlr.user_id = u.id
+         AND mlr.period_month = prev_month
+         AND mlr.period_year = prev_year
+       LIMIT 1),
+
+      (SELECT mlrh.total_loan_outstanding
+       FROM monthly_loan_records_history mlrh
+       WHERE mlrh.user_id = u.id
+       ORDER BY mlrh.period_year DESC, mlrh.period_month DESC
+       LIMIT 1),
+
+      (SELECT COALESCE(SUM(l.loan_amount),0)
+       FROM loans l
+       WHERE l.user_id = u.id
+         AND l.status='active')
+    )
+    +
+    COALESCE(
+      (SELECT SUM(al.additional_loan_amount)
+       FROM additional_loan al
+       WHERE al.user_id = u.id
+         AND al.period_key = p_period_key),
+      0
+    )
+    -
+    COALESCE(
+      (SELECT SUM(lp.additional_principal)
+       FROM loan_payments lp
+       WHERE lp.user_id = u.id
+         AND lp.period_key = p_period_key),
+      0
+    )
+    -
+    COALESCE(
+      (SELECT SUM(lp.monthly_emi)
+       FROM loan_payments lp
+       WHERE lp.user_id = u.id
+         AND lp.period_key = p_period_key),
+      0
+    )
+  ),
+  0
+) AS available_loan_amount
 
     FROM profiles u
     WHERE (u.role = 'member' OR u.role = 'user'

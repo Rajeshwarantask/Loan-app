@@ -566,6 +566,7 @@ export function RecordPaymentUnifiedDialog({
             : emi,
 
         additional_principal: additionalPrincipal,
+        opening_balance: principalRemaining,
         remaining_balance: newRemainingBalance,
         period_month: paymentMonth,
         period_year: paymentYear,
