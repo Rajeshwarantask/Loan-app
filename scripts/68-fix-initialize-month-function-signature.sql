@@ -74,21 +74,36 @@ BEGIN
       
       -- Opening Balance
       COALESCE(
-        (SELECT mlr.total_loan_outstanding 
-         FROM monthly_loan_records mlr 
-         WHERE mlr.user_id = u.id 
-           AND mlr.period_month = prev_month 
-           AND mlr.period_year = prev_year
-         LIMIT 1),
-        (SELECT mlrh.total_loan_outstanding
-         FROM monthly_loan_records_history mlrh
-         WHERE mlrh.user_id = u.id
-         ORDER BY mlrh.period_year DESC, mlrh.period_month DESC
-         LIMIT 1),
-        (SELECT COALESCE(SUM(l.loan_amount), 0)
-         FROM loans l
-         WHERE l.user_id = u.id AND l.status = 'active')
-      ) AS total_loan_taken,
+    (
+        SELECT lp.opening_balance
+        FROM loan_payments lp
+        WHERE lp.user_id = u.id
+          AND lp.period_key = p_period_key
+        ORDER BY lp.created_at DESC
+        LIMIT 1
+    ),
+    (
+        SELECT mlr.total_loan_outstanding
+        FROM monthly_loan_records mlr
+        WHERE mlr.user_id = u.id
+          AND mlr.period_month = prev_month
+          AND mlr.period_year = prev_year
+        LIMIT 1
+    ),
+    (
+        SELECT mlrh.total_loan_outstanding
+        FROM monthly_loan_records_history mlrh
+        WHERE mlrh.user_id = u.id
+        ORDER BY mlrh.period_year DESC, mlrh.period_month DESC
+        LIMIT 1
+    ),
+    (
+        SELECT COALESCE(SUM(l.loan_amount),0)
+        FROM loans l
+        WHERE l.user_id=u.id
+          AND l.status='active'
+        )
+    ) AS total_loan_taken
       
       -- Additional Principal from loan_payments
       COALESCE(
