@@ -189,7 +189,9 @@ export function NotificationToast() {
       <div
           onClick={handleToastClick}
           className={cn(
-            "rounded-lg border-l-4 shadow-lg overflow-hidden cursor-pointer transition-all duration-200 hover:shadow-xl hover:scale-[1.02]",
+            "select-none",
+            "touch-manipulation",
+            "rounded-lg border-l-4 shadow-lg overflow-hidden cursor-pointer",
             style.bg,
             style.borderColor
           )}
