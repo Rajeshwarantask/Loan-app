@@ -1,14 +1,29 @@
--- Populate opening_balance for all existing loan_payments records
--- Uses the existing get_opening_balance() function with priority logic:
--- 1. Previous month's remaining_balance
--- 2. Original loan amount (if first month)
--- 3. Reconstructed value (fallback)
+-- ========================================================================
+-- OPENING BALANCE DEPLOYMENT - STANDALONE SQL
+-- ========================================================================
+-- Copy and paste this ENTIRE file into Supabase SQL Editor
+-- This includes BOTH migrations 75 & 76 in one file
+-- ========================================================================
 
--- IMPORTANT: Run migration 74 FIRST to create get_opening_balance() function
--- This migration depends on that function existing
+-- ========================================================================
+-- MIGRATION 75: Add Column & Index
+-- ========================================================================
+
+ALTER TABLE loan_payments
+ADD COLUMN IF NOT EXISTS opening_balance numeric DEFAULT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_loan_payments_opening_balance
+  ON loan_payments(user_id, period_key, opening_balance);
+
+COMMENT ON COLUMN loan_payments.opening_balance IS
+  'Opening balance for this payment period. Used to calculate interest due for the period.
+   Formula: interest_due = opening_balance × interest_rate / 100';
+
+-- ========================================================================
+-- MIGRATION 76: Backfill Existing Records & Create Trigger
+-- ========================================================================
 
 -- Step 1: Update all existing records that don't have opening_balance populated
--- Strategy: For each payment, use the previous period's closing balance or original loan amount
 UPDATE loan_payments
 SET opening_balance = COALESCE(
   -- Priority 1: Previous month's remaining_balance
@@ -104,5 +119,11 @@ BEFORE INSERT ON loan_payments
 FOR EACH ROW
 EXECUTE FUNCTION ensure_opening_balance_on_insert();
 
--- Step 5: Verify all records now have opening_balance populated
--- Run this query to verify: SELECT COUNT(*) as records_without_opening_balance FROM loan_payments WHERE opening_balance IS NULL OR opening_balance = 0;
+-- ========================================================================
+-- VERIFICATION QUERY (Run after deployment)
+-- ========================================================================
+-- SELECT COUNT(*) as records_without_opening_balance
+-- FROM loan_payments
+-- WHERE opening_balance IS NULL OR opening_balance = 0;
+-- 
+-- Expected result: 0
