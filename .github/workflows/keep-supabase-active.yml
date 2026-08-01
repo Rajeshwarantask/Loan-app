@@ -1,0 +1,51 @@
+name: Keep Supabase Active
+
+# Run every 3 days to prevent Supabase project from pausing due to inactivity
+on:
+  schedule:
+    # Runs at 09:00 UTC every 3 days (starting from day 1 of the month)
+    - cron: '0 9 1,4,7,10,13,16,19,22,25,28,31 * *'
+  
+  # Allow manual trigger from Actions tab
+  workflow_dispatch:
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    name: Supabase Health Check
+    
+    steps:
+      - name: Log workflow start
+        run: echo "Starting Supabase keep-alive health check at $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+
+      - name: Call health check endpoint
+        run: |
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.HEALTH_CHECK_URL }}/api/health")
+          
+          # Extract HTTP status code (last line)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          # Extract response body (everything except last line)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+          
+          echo "HTTP Status: $HTTP_CODE"
+          echo "Response: $BODY"
+          
+          # Fail if not successful
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ Health check failed with status $HTTP_CODE"
+            exit 1
+          fi
+          
+          echo "✅ Health check successful - Supabase activity registered"
+
+      - name: Send Slack notification (optional)
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: 'Supabase keep-alive health check: ${{ job.status }}'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          fields: repo,message,commit,author
+        continue-on-error: true
