@@ -20,7 +20,7 @@ jobs:
 
       - name: Call health check endpoint
         run: |
-          RESPONSE=$(curl -s -w "\n%{http_code}" \
+          RESPONSE=$(curl -L -s -w "\n%{http_code}" \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             "${{ secrets.HEALTH_CHECK_URL }}/api/health")
           
