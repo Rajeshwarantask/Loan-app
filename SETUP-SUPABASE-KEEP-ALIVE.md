@@ -27,7 +27,7 @@ Save this value - you'll need it in steps 2 & 3.
 |------|-------|
 | `CRON_SECRET` | Paste the value from step 1 |
 | `HEALTH_CHECK_URL` | `https://your-app.vercel.app` |
-| `SLACK_WEBHOOK` | (Optional - your Slack webhook URL) |
+| `SLACK_WEBHOOK_URL` | (Optional - your Slack webhook URL) |
 
 ### 3. Add Vercel Environment Variable
 1. Go to: Vercel → Your Project → **Settings** → **Environment Variables**

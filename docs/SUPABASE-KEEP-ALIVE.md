@@ -71,8 +71,8 @@ The workflow:
 - **Value:** Your Vercel deployment URL (e.g., `https://your-app.vercel.app`)
 - Click **Add secret**
 
-#### Secret 3: `SLACK_WEBHOOK` (Optional)
-- **Name:** `SLACK_WEBHOOK`
+#### Secret 3: `SLACK_WEBHOOK_URL` (Optional)
+- **Name:** `SLACK_WEBHOOK_URL`
 - **Value:** Your Slack incoming webhook URL (for notifications)
 - Click **Add secret**
 
@@ -156,7 +156,7 @@ CRON_SECRET=your-secret-here
 
 # GitHub Secrets only (not needed in Vercel)
 HEALTH_CHECK_URL=https://your-app.vercel.app
-SLACK_WEBHOOK=https://hooks.slack.com/services/... (optional)
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/... (optional)
 ```
 
 ---
@@ -196,7 +196,7 @@ SLACK_WEBHOOK=https://hooks.slack.com/services/... (optional)
 
 **Solution:**
 1. This is optional - the health check will still work without it
-2. To enable: Add `SLACK_WEBHOOK` to GitHub Secrets
+2. To enable: Add `SLACK_WEBHOOK_URL` to GitHub Secrets
 3. Get a webhook URL from: Slack App → Incoming Webhooks
 4. Format: `https://hooks.slack.com/services/YOUR/WEBHOOK/URL`
 
