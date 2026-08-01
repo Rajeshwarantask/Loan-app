@@ -61,9 +61,9 @@ export function RecordPaymentUnifiedDialog({
   const [hasPaymentThisMonth, setHasPaymentThisMonth] = useState(false)
   const [checkingPayment, setCheckingPayment] = useState(false)
   const [monthlySubscription, setMonthlySubscription] = useState("2100")
-  const [principalRemaining, setPrincipalRemaining] = useState(() => 
-    Math.max(0, loan?.original_loan_amount || loan?.loan_amount || 0)
-  )
+  // Initialize as null - will be populated by fetchMostRecentBalance from DB
+  // DO NOT initialize with calculated value to avoid stale data race condition
+  const [principalRemaining, setPrincipalRemaining] = useState<number | null>(null)
   const [penaltyPayment, setPenaltyPayment] = useState("0")
   const [outstandingPenalty, setOutstandingPenalty] = useState(0)
   const [missedLastMonthPayment, setMissedLastMonthPayment] = useState(false)
