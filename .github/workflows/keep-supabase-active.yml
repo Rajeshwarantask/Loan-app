@@ -41,11 +41,11 @@ jobs:
           echo "✅ Health check successful - Supabase activity registered"
 
       - name: Send Slack notification (optional)
-        if: always()
+        if: always() && secrets.SLACK_WEBHOOK_URL != ''
         uses: 8398a7/action-slack@v3
         with:
           status: ${{ job.status }}
           text: 'Supabase keep-alive health check: ${{ job.status }}'
-          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
           fields: repo,message,commit,author
         continue-on-error: true
