@@ -9,6 +9,11 @@ export async function updateSession(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
+  // Skip auth checks for health check endpoint (cron job)
+  if (request.nextUrl.pathname === "/api/health") {
+    return supabaseResponse
+  }
+
   // If environment variables are not set, return early without auth checks
   if (!supabaseUrl || !supabaseAnonKey) {
     console.warn("[v0] Supabase environment variables not configured")
