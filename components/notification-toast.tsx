@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
+import { createClient, isSupabaseConfigured } from "@/lib/supabase/client"
 import { X, Bell } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -26,6 +26,11 @@ export function NotificationToast() {
 
   useEffect(() => {
     const checkAuthAndFetchNotices = async () => {
+      // Notifications are optional when preview environment variables are unavailable.
+      if (!isSupabaseConfigured()) {
+        return
+      }
+
       const supabase = createClient()
       
       // Check if user is authenticated

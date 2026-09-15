@@ -18,9 +18,12 @@ We use GitHub Actions to call a health check endpoint every 3 days, which regist
 
 The endpoint:
 - Does NOT require user authentication
-- Performs a lightweight Supabase query to register activity
-- Is secured using a custom `x-cron-secret` header
-- Returns a simple JSON response
+- Uses a cookie-free server-only Supabase client
+- Performs a lightweight read-only query against the existing `loans` table
+- Is secured using a constant-time `x-cron-secret` header comparison
+- Returns HTTP 200 only when Supabase responds successfully
+- Returns HTTP 503 when the database request fails
+- Performs no writes and never exposes database error details
 
 **How it works:**
 ```typescript
@@ -30,10 +33,12 @@ if (cronSecret !== process.env.CRON_SECRET) {
   return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 }
 
-// Performs lightweight RPC call
-const { data, error } = await supabase.rpc("get_opening_balance", {...})
+// Performs a lightweight read-only query through Supabase
+const { error } = await supabase
+  .from("loans")
+  .select("id", { count: "exact", head: true })
 
-// Returns success status
+// Returns success only when the database request succeeds
 return NextResponse.json({ status: "ok", timestamp })
 ```
 

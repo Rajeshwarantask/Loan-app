@@ -1,7 +1,7 @@
 ## Supabase Keep-Alive: Quick Setup (5 minutes)
 
 ### What This Does
-Prevents Supabase from pausing your project by automatically pinging it every 3 days.
+Prevents Supabase from pausing your project by automatically making a protected, read-only request to your Supabase database every 3 days.
 
 ### Files Added
 - `app/api/health/route.ts` - Health check endpoint

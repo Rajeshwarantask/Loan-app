@@ -20,22 +20,10 @@ jobs:
 
       - name: Call health check endpoint
         run: |
-          RESPONSE=$(curl -L -s -w "\n%{http_code}" \
+          URL="${{ secrets.HEALTH_CHECK_URL }}/api/health"
+          RESPONSE=$(curl --fail-with-body --location --silent --show-error \
+            --max-time 20 \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
-            "${{ secrets.HEALTH_CHECK_URL }}/api/health")
-          
-          # Extract HTTP status code (last line)
-          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-          # Extract response body (everything except last line)
-          BODY=$(echo "$RESPONSE" | head -n-1)
-          
-          echo "HTTP Status: $HTTP_CODE"
-          echo "Response: $BODY"
-          
-          # Fail if not successful
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "❌ Health check failed with status $HTTP_CODE"
-            exit 1
-          fi
-          
-          echo "✅ Health check successful - Supabase activity registered"
+            "$URL")
+          echo "Health check response: $RESPONSE"
+          echo "Supabase health check succeeded"

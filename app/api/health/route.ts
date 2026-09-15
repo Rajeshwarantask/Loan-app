@@ -1,5 +1,15 @@
+import { timingSafeEqual } from "node:crypto"
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createHealthClient } from "@/lib/supabase/health"
+
+export const dynamic = "force-dynamic"
+
+function secretsMatch(provided: string | null, expected: string) {
+  if (!provided) return false
+  const providedBuffer = Buffer.from(provided)
+  const expectedBuffer = Buffer.from(expected)
+  return providedBuffer.length === expectedBuffer.length && timingSafeEqual(providedBuffer, expectedBuffer)
+}
 
 /**
  * Health Check Endpoint
@@ -24,42 +34,22 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    if (cronSecret !== process.env.CRON_SECRET) {
-      console.warn("[Health] Invalid cron secret provided")
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      )
+    if (!secretsMatch(cronSecret, process.env.CRON_SECRET)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Create Supabase client and perform minimal query to register activity
-    const supabase = await createClient()
-
-    // Lightweight RPC call to keep database connection active
-    const { data, error } = await supabase.rpc("get_opening_balance", {
-      p_user_id: "00000000-0000-0000-0000-000000000000", // Dummy UUID
-      p_period_key: "1970-01", // Dummy period
-    })
+    // Use a cookie-free client and make a read-only request through Supabase.
+    const supabase = createHealthClient()
+    const { error } = await supabase.from("loans").select("id", { count: "exact", head: true })
 
     if (error) {
-      // Even if the RPC fails, the connection attempt still registers activity
-      console.log("[Health] RPC check completed (error expected for dummy values):", error.code)
-    } else {
-      console.log("[Health] RPC check successful")
+      console.error("[Health] Supabase query failed:", error.code)
+      return NextResponse.json({ error: "Health check failed" }, { status: 503, headers: { "Cache-Control": "no-store" } })
     }
 
-    // Alternative: Simple SELECT 1 if RPC fails
-    // const { error: simpleError } = await supabase.from("loans").select("count", { count: "exact", head: true })
-
-    const timestamp = new Date().toISOString()
-    
     return NextResponse.json(
-      {
-        status: "ok",
-        timestamp,
-        message: "Supabase connection verified - project activity registered",
-      },
-      { status: 200 }
+      { status: "ok", timestamp: new Date().toISOString(), message: "Supabase connection verified" },
+      { status: 200, headers: { "Cache-Control": "no-store" } }
     )
   } catch (err) {
     console.error("[Health] Unexpected error:", err)
